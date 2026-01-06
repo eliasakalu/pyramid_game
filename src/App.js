@@ -90,10 +90,7 @@ function Login() {
           {error && <div className="error-message">{error}</div>}
           <button type="submit" className="login-btn">Login</button>
         </form>
-        <div className="login-note">
-          <p>Default: admin@game.com / admin123</p>
-          <p>Or set REACT_APP_ADMIN_EMAIL and REACT_APP_ADMIN_PASSWORD in .env</p>
-        </div>
+        
       </div>
     </div>
   );
@@ -157,8 +154,8 @@ function AdminPanel() {
   // Initialize default data
   const defaultTeams = [
     { id: 1, name: 'Team Red', score: 0, color: '#FF6B6B', isPlaying: true },
-    { id: 2, name: 'Team Blue', score: 0, color: '#4D96FF', isPlaying: false },
-    { id: 3, name: 'Team Green', score: 0, color: '#4CAF50', isPlaying: false }
+    { id: 2, name: 'Team Blue', score: 0, color: '#4D96FF', isPlaying: false }
+
   ];
 
   const defaultBoxes = [
@@ -680,8 +677,8 @@ function AdminPanel() {
     if (window.confirm('Are you sure you want to reset the entire game? This will clear all scores and conquered boxes.')) {
       const resetTeams = [
         { id: 1, name: 'Team Red', score: 0, color: '#FF6B6B', isPlaying: true },
-        { id: 2, name: 'Team Blue', score: 0, color: '#4D96FF', isPlaying: false },
-        { id: 3, name: 'Team Green', score: 0, color: '#4CAF50', isPlaying: false }
+        { id: 2, name: 'Team Blue', score: 0, color: '#4D96FF', isPlaying: false }
+  
       ];
       
       const resetBoxes = boxes.map(box => ({
@@ -735,7 +732,7 @@ function AdminPanel() {
       <div className="admin-panel">
         {/* Admin Header */}
         <div className="header">
-          <h1>🎪 Betaliz Word Game - Admin Panel</h1>
+          <h1>🎪 Betaliz Word Game</h1>
           <div className="admin-status">
             <span className={`status-indicator ${isConnected ? 'connected' : 'disconnected'}`}>
               {isConnected ? '🟢 Connected' : '🔴 Disconnected'}
@@ -858,7 +855,7 @@ function AdminPanel() {
               
               <div className="team-quick-actions">
                 <button onClick={switchToNextTeam} className="quick-btn">
-                  🔄 Switch to Next Team
+                   Switch to Next Team
                 </button>
                 <button 
                   onClick={async () => {
@@ -867,13 +864,13 @@ function AdminPanel() {
                   }}
                   className="quick-btn reset"
                 >
-                  🔄 Reset All Scores
+                  Reset All Scores
                 </button>
                 <button 
                   onClick={resetGame}
                   className="quick-btn danger"
                 >
-                  ⚠️ Reset Entire Game
+                   Reset Entire Game
                 </button>
               </div>
             </div>
@@ -1456,26 +1453,26 @@ function PlayerView() {
       
       {/* Player Header */}
       <div className="player-header">
-        <h2>🎮 Player Screen - Clue Giver</h2>
+        <h2>🎮 የተጫዋቾች ስክሪን  </h2> {/*Player Screen*/}
         <div className="player-info">
           <div className="info-card">
-            <div className="label">Your Team:</div>
+            <div className="label">የእርሶ ቡድን:</div>{/*Your Team*/}
             <div className="value" style={{ color: currentTeam?.color }}>
               {currentTeam?.name || 'No team playing'}
             </div>
           </div>
           <div className="info-card">
-            <div className="label">Time Left:</div>
+            <div className="label">የቀሮት ሰአት:</div>{/*Time Left*/}
             <div className={`timer ${timer <= 10 ? 'warning' : ''}`}>
               {timer} seconds
             </div>
           </div>
           <div className="info-card">
-            <div className="label">Words Guessed:</div>
+            <div className="label">የገመቱት ቃል:</div> {/*"Word guessed"*/}
             <div className="value">{correctWords.length}</div>
           </div>
           <div className="info-card">
-            <div className="label">Team Score:</div>
+            <div className="label">የቡድኖ ነጥብ:</div>{/*Team Score*/}
             <div className="value">{currentTeam?.score?.toFixed(2) || '0.00'} pts</div>
           </div>
         </div>
@@ -1484,21 +1481,21 @@ function PlayerView() {
       <div className="player-content">
         {/* Left: Pyramid View */}
         <div className="player-pyramid-section">
-          <h3>📦 Pyramid Boxes</h3>
+          <h3>📦 ሳጥኖች</h3> {/*Pyramid Boxes */}
           <div className="player-pyramid">
             {/* Row 1: Box 1 */}
             <div className="pyramid-row">
               <div 
                 className={`player-pyramid-box ${boxes[0]?.isCurrent ? 'current' : ''} ${boxes[0]?.conqueredBy ? 'conquered' : ''}`}
                 style={{ 
-                  backgroundColor: boxes[0]?.conqueredBy ? '#666' : boxes[0]?.color,
+                  backgroundColor: boxes[0]?.conqueredBy ? '#668' : boxes[0]?.color,
                   opacity: boxes[0]?.conqueredBy ? 0.7 : 1
                 }}
               >
                 <div className="box-number">1</div>
                 <div className="box-category">{boxes[0]?.category}</div>
                 <div className="box-points">{boxes[0]?.points} pts</div>
-                {boxes[0]?.isCurrent && <div className="current-indicator">🎯 Playing</div>}
+                {boxes[0]?.isCurrent && <div className="current-indicator">🎯 እየተጫወቱ ነው</div>}
                 {boxes[0]?.conqueredBy && <div className="conquered-label">🏆 {boxes[0]?.conqueredBy}</div>}
               </div>
             </div>
@@ -1510,14 +1507,14 @@ function PlayerView() {
                   key={index}
                   className={`player-pyramid-box ${boxes[index]?.isCurrent ? 'current' : ''} ${boxes[index]?.conqueredBy ? 'conquered' : ''}`}
                   style={{ 
-                    backgroundColor: boxes[index]?.conqueredBy ? '#666' : boxes[index]?.color,
+                    backgroundColor: boxes[index]?.conqueredBy ? '#668' : boxes[index]?.color,
                     opacity: boxes[index]?.conqueredBy ? 0.7 : 1
                   }}
                 >
                   <div className="box-number">{boxes[index]?.id}</div>
                   <div className="box-category">{boxes[index]?.category}</div>
                   <div className="box-points">{boxes[index]?.points} pts</div>
-                  {boxes[index]?.isCurrent && <div className="current-indicator">🎯 Playing</div>}
+                  {boxes[index]?.isCurrent && <div className="current-indicator">🎯 እየተጫወቱ ነው</div>}
                   {boxes[index]?.conqueredBy && <div className="conquered-label">🏆 {boxes[index]?.conqueredBy}</div>}
                 </div>
               ))}
@@ -1530,14 +1527,14 @@ function PlayerView() {
                   key={index}
                   className={`player-pyramid-box ${boxes[index]?.isCurrent ? 'current' : ''} ${boxes[index]?.conqueredBy ? 'conquered' : ''}`}
                   style={{ 
-                    backgroundColor: boxes[index]?.conqueredBy ? '#666' : boxes[index]?.color,
+                    backgroundColor: boxes[index]?.conqueredBy ? '#668' : boxes[index]?.color,
                     opacity: boxes[index]?.conqueredBy ? 0.7 : 1
                   }}
                 >
                   <div className="box-number">{boxes[index]?.id}</div>
                   <div className="box-category">{boxes[index]?.category}</div>
                   <div className="box-points">{boxes[index]?.points} pts</div>
-                  {boxes[index]?.isCurrent && <div className="current-indicator">🎯 Playing</div>}
+                  {boxes[index]?.isCurrent && <div className="current-indicator">🎯 እየተጫወቱ ነው</div>}
                   {boxes[index]?.conqueredBy && <div className="conquered-label">🏆 {boxes[index]?.conqueredBy}</div>}
                 </div>
               ))}
@@ -1548,14 +1545,14 @@ function PlayerView() {
               <div 
                 className={`player-pyramid-box ${boxes[6]?.isCurrent ? 'current' : ''} ${boxes[6]?.conqueredBy ? 'conquered' : ''}`}
                 style={{ 
-                  backgroundColor: boxes[6]?.conqueredBy ? '#666' : boxes[6]?.color,
+                  backgroundColor: boxes[6]?.conqueredBy ? '#668' : boxes[6]?.color,
                   opacity: boxes[6]?.conqueredBy ? 0.7 : 1
                 }}
               >
                 <div className="box-number">7</div>
                 <div className="box-category">{boxes[6]?.category}</div>
                 <div className="box-points">{boxes[6]?.points} pts</div>
-                {boxes[6]?.isCurrent && <div className="current-indicator">🎯 Playing</div>}
+                {boxes[6]?.isCurrent && <div className="current-indicator">🎯 እየተጫወቱ ነው</div>}
                 {boxes[6]?.conqueredBy && <div className="conquered-label">🏆 {boxes[6]?.conqueredBy}</div>}
               </div>
             </div>
@@ -1576,20 +1573,20 @@ function PlayerView() {
           {!gameStarted ? (
             <div className="waiting-screen">
               <div className="waiting-icon">⏳</div>
-              <h3>Waiting for Admin to Start Round</h3>
-              <p>When the round starts, words will appear here one by one.</p>
-              <div className="instructions">
-                <p><strong>🎯 Instructions for Clue Giver:</strong></p>
-                <p>1. Describe each word WITHOUT saying the actual word</p>
-                <p>2. Your teammate must guess based on your clues</p>
-                <p>3. Admin will mark correct answers</p>
-                <p>4. Get as many as possible in 30 seconds!</p>
+              <h3>ጨዋታው እስኪጀመር ይጠብቁ</h3> {/*Waiting for Admin to Start Round */}
+              <p>ዙሩ ሲጀምር ቃላቶች አንድ በአንድ እዚህ ጋር ይታያሉ።</p>
+              <div className="instructions">{/*When the round starts, words will appear here one by one.     Instructions for Clue Giver   Describe each word WITHOUT saying the actual word  Your teammate must guess based on your clues     Admin will mark correct answers   Get as many as possible in 30 seconds!*/}
+                <p><strong>🔖ፍንጭ ሰጪ መመሪያዎች፡-:</strong></p>
+                <p>1. ትክክለኛውን ቃል ሳይናገሩ እያንዳንዱን ቃል ይግለጹ</p>
+                <p>2. የቡድን ጓደኛዎ በእርስዎ ፍንጮች ላይ በመመስረት መገመት አለበት።</p>
+                <p>3. የጨዋታው ዳኛ ትክክለኛ መልሶች ላይ ምልክት ያደርጋል።</p>
+                <p>4. በ 30 ሰከንዶች ውስጥ በተቻለ መጠን ብዙ ያግኙ!</p>
               </div>
             </div>
           ) : (
             <div className="active-game">
               <div className="word-display-header">
-                <h3>Describe this word to your teammate:</h3>
+                <h3>ይህንን ቃል ለቡድን ጓደኛዎ ይግለጹ:</h3>{/*Describe this word to your teammate */}
                 <div className="word-progress">
                   Word {currentWordIndex + 1} of {getCurrentBox()?.words?.length}
                 </div>
@@ -1608,7 +1605,7 @@ function PlayerView() {
                       {getCurrentBox()?.words[currentWordIndex]}
                     </div>
                     <div className="word-countdown">
-                      {timer}s left
+                      {timer}s ይቀሮታል{/*left*/}
                     </div>
                   </div>
                 )}
@@ -1618,13 +1615,13 @@ function PlayerView() {
                     onClick={() => setWordDisplayStyle('one-by-one')}
                     className={`style-btn ${wordDisplayStyle === 'one-by-one' ? 'active' : ''}`}
                   >
-                    📱 One by One
+                    አንድ በአንድ{/* One by One*/ }  
                   </button>
                   <button
                     onClick={() => setWordDisplayStyle('flashcard')}
                     className={`style-btn ${wordDisplayStyle === 'flashcard' ? 'active' : ''}`}
                   >
-                    🃏 Flashcard
+                    በትልቁ {/*Flashcard */}
                   </button>
                 </div>
               </div>
@@ -1666,7 +1663,7 @@ function PlayerView() {
       
       {/* Scoreboard */}
       <div className="scoreboard">
-        <h3>🏆 Live Scoreboard</h3>
+        <h3>🏆እሁን ያለው ውጤት ድምር </h3> {/*Live Scoreboard */}
         <div className="teams-scoreboard">
           {teams.map(team => (
             <div 
@@ -1677,9 +1674,9 @@ function PlayerView() {
               <div className="scoreboard-team-info">
                 <div className="team-dot" style={{ backgroundColor: team.color }} />
                 <div className="team-name">{team.name}</div>
-                {team.isPlaying && <div className="playing-indicator">🎯 PLAYING</div>}
+                {team.isPlaying && <div className="playing-indicator">🎯 እየተጫወቱ ነው</div>}{/*PLAYING    points*/}
               </div>
-              <div className="team-score">{team.score?.toFixed(2) || '0.00'} points</div>
+              <div className="team-score">{team.score?.toFixed(2) || '0.00'} ነጥብ </div>
             </div>
           ))}
         </div>

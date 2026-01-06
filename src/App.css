@@ -20,6 +20,7 @@ body::before{
   background-size: contain;
   background-position: center;
   background-repeat: no-repeat;
+  opacity: 20%;
   transition: opacity 1.5s ease-in-out;
   z-index: -1;
 }
@@ -90,20 +91,43 @@ body::before{
   gap: 30px;
 }
 
-/* Cards */
 .card {
-  background: url('./images/image2.jpg');
-  background-size:cover ;
-  background-repeat: no-repeat;
+   position: relative; 
+  /* background: url('./images/image2.jpg');
+  background-size: cover;
+  background-repeat: no-repeat; */ 
   border-radius: 16px;
   padding: 24px;
   margin-bottom: 24px;
   border: 1px solid #eaeaea;
 }
+.card::before {
+  content: "";
+  position: absolute;   
+  inset: 0;            
+  background-image: url('./images/image3.jpg');
+  background-size: cover;
+  background-repeat: no-repeat;
+  opacity: 0.01;        
+  transition: opacity 1.5s ease-in-out;
+  z-index: 0.1; 
+}
+
+.admin-panel::before {
+  content: "";
+  position: absolute;   
+  inset: 0;            
+  background-image: url('./images/image2.jpg');
+  background-size: cover;
+  background-repeat: no-repeat;
+  opacity: 0.05;        
+  transition: opacity 1.5s ease-in-out;
+  z-index: 0;           /* behind card content */
+}
 
 .card h2 {
   font-size: 1.6rem;
-  color: #ffffff;
+  color: #000000;
   margin-bottom: 20px;
   padding-bottom: 12px;
   border-bottom: 3px solid #667eea;
