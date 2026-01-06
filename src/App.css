@@ -16,8 +16,8 @@ body::before{
   content: "";
   position: fixed;
   inset: 0;
-  background-image: url('./images/image4.jpg');
-  background-size: cover;
+  background-image: url('./images/image3.jpg');
+  background-size: contain;
   background-position: center;
   background-repeat: no-repeat;
   transition: opacity 1.5s ease-in-out;
@@ -92,7 +92,7 @@ body::before{
 
 /* Cards */
 .card {
-  background: url('./images/image4.jpg');
+  background: url('./images/image2.jpg');
   background-size:cover ;
   background-repeat: no-repeat;
   border-radius: 16px;
@@ -1096,8 +1096,6 @@ body::before{
   }
 }
 
-
-
 /* Remove any view-toggle styles from the existing CSS */
 .view-toggle {
   display: none;
@@ -1218,7 +1216,6 @@ body::before{
 .quick-btn.danger {
   background: linear-gradient(135deg, #f44336 0%, #C62828 100%);
 }
-
 
 /* Add these to your existing App.css */
 
@@ -1385,6 +1382,11 @@ body::before{
   color: white;
 }
 
+.status-indicator.disconnected {
+  background: #f44336;
+  color: white;
+}
+
 .player-count {
   background: #2196F3;
   color: white;
@@ -1392,4 +1394,102 @@ body::before{
   border-radius: 20px;
   font-weight: 600;
   font-size: 0.9rem;
+}
+
+/* Firebase Error */
+.firebase-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  text-align: center;
+  padding: 40px;
+}
+
+.firebase-error h3 {
+  font-size: 2rem;
+  margin-bottom: 20px;
+}
+
+.firebase-error p {
+  font-size: 1.2rem;
+  margin-bottom: 30px;
+  max-width: 500px;
+}
+
+.firebase-error button {
+  padding: 12px 30px;
+  background: white;
+  color: #667eea;
+  border: none;
+  border-radius: 10px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.firebase-error button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
+}
+
+/* Add to App.css - Score editing styles */
+.team-score-edit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 5px;
+}
+
+.score-input {
+  width: 100px;
+  padding: 6px 10px;
+  border: 2px solid #667eea;
+  border-radius: 6px;
+  font-size: 1rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.score-edit-buttons {
+  display: flex;
+  gap: 5px;
+}
+
+.score-edit-buttons .save-btn,
+.score-edit-buttons .cancel-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  cursor: pointer;
+  border: none;
+  transition: all 0.3s;
+}
+
+.score-edit-buttons .save-btn {
+  background: #4CAF50;
+  color: white;
+}
+
+.score-edit-buttons .save-btn:hover {
+  background: #3d8b40;
+  transform: scale(1.1);
+}
+
+.score-edit-buttons .cancel-btn {
+  background: #f44336;
+  color: white;
+}
+
+.score-edit-buttons .cancel-btn:hover {
+  background: #d32f2f;
+  transform: scale(1.1);
 }

@@ -1,0 +1,19 @@
+<script type="module">
+  // Import the functions you need from the SDKs you need
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-app.js";
+  // TODO: Add SDKs for Firebase products that you want to use
+  // https://firebase.google.com/docs/web/setup#available-libraries
+
+  // Your web app's Firebase configuration
+  const firebaseConfig = {
+    apiKey: "AIzaSyCTKIjJcHQKVuaCJbc153MOQ3uhGEi5XGk",
+    authDomain: "betaliz.firebaseapp.com",
+    projectId: "betaliz",
+    storageBucket: "betaliz.firebasestorage.app",
+    messagingSenderId: "166023270590",
+    appId: "1:166023270590:web:9f19f40cf7986967cf0eef"
+  };
+
+  // Initialize Firebase
+  const app = initializeApp(firebaseConfig);
+</script>

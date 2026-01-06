@@ -1,17 +1,39 @@
-// File: App.js
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import './App.css';
 
-// Create a BroadcastChannel for real-time communication
-const gameChannel = new BroadcastChannel('pyramid_game_channel');
+// Firebase imports
+import { initializeApp } from 'firebase/app';
+import { 
+  getFirestore, 
+  doc, 
+  setDoc, 
+  onSnapshot, 
+  updateDoc,
+  collection,
+  getDocs,
+  query
+} from 'firebase/firestore';
+
+// Initialize Firebase
+const firebaseConfig = {
+  apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
+  authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.REACT_APP_FIREBASE_APP_ID
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
 
 function App() {
   return (
     <Router>
       <Routes>
         <Route path="/" element={<Navigate to="/admin" replace />} />
-        <Route path="/admin" element={<ProtectedAdminPanel />} />
+        <Route path="/admin" element={<AdminPanel />} />
         <Route path="/login" element={<Login />} />
         <Route path="/player" element={<PlayerView />} />
       </Routes>
@@ -77,20 +99,43 @@ function Login() {
   );
 }
 
-// Protected Admin Panel
-function ProtectedAdminPanel() {
+// Helper function to round to 2 decimal places
+const roundToTwo = (num) => {
+  return Math.round((num + Number.EPSILON) * 100) / 100;
+};
+
+// Admin Panel Component with Firebase Integration
+function AdminPanel() {
+  const [teams, setTeams] = useState([]);
+  const [boxes, setBoxes] = useState([]);
+  const [currentBox, setCurrentBox] = useState(null);
+  const [currentWordIndex, setCurrentWordIndex] = useState(0);
+  const [gameStarted, setGameStarted] = useState(false);
+  const [timer, setTimer] = useState(30);
+  const [isTimerRunning, setIsTimerRunning] = useState(false);
+  const [correctWords, setCorrectWords] = useState([]);
+  const [skippedWords, setSkippedWords] = useState([]);
+  const [newTeamName, setNewTeamName] = useState('');
+  const [newWord, setNewWord] = useState('');
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [selectedBoxForWords, setSelectedBoxForWords] = useState(0);
+  const [editingCategory, setEditingCategory] = useState(null);
+  const [isConnected, setIsConnected] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [editingTeamScore, setEditingTeamScore] = useState(null);
+  const [tempTeamScore, setTempTeamScore] = useState('');
+  const timerIntervalRef = useRef(null);
 
+  // Check authentication on component mount
   useEffect(() => {
     const checkAuth = () => {
       const isLoggedIn = localStorage.getItem('isAdminLoggedIn');
       const loginTime = localStorage.getItem('adminLoginTime');
       
-      // Check if login is within 12 hours
       if (isLoggedIn && loginTime) {
         const timeDiff = Date.now() - parseInt(loginTime);
-        if (timeDiff < 12 * 60 * 60 * 1000) { // 12 hours
+        if (timeDiff < 12 * 60 * 60 * 1000) {
           setIsAuthenticated(true);
         } else {
           localStorage.removeItem('isAdminLoggedIn');
@@ -108,6 +153,549 @@ function ProtectedAdminPanel() {
     localStorage.removeItem('adminLoginTime');
     window.location.href = '/login';
   };
+
+  // Initialize default data
+  const defaultTeams = [
+    { id: 1, name: 'Team Red', score: 0, color: '#FF6B6B', isPlaying: true },
+    { id: 2, name: 'Team Blue', score: 0, color: '#4D96FF', isPlaying: false },
+    { id: 3, name: 'Team Green', score: 0, color: '#4CAF50', isPlaying: false }
+  ];
+
+  const defaultBoxes = [
+    {
+      id: 1,
+      category: 'Movies',
+      words: ['Titanic', 'Avatar', 'Star Wars', 'Harry Potter', 'Inception', 'The Matrix', 'Frozen'],
+      color: '#FF6B6B',
+      isCurrent: false,
+      conqueredBy: null,
+      points: 100
+    },
+    {
+      id: 2,
+      category: 'Animals',
+      words: ['Lion', 'Elephant', 'Dolphin', 'Eagle', 'Penguin', 'Giraffe', 'Kangaroo'],
+      color: '#4ECDC4',
+      isCurrent: false,
+      conqueredBy: null,
+      points: 200
+    },
+    {
+      id: 3,
+      category: 'Countries',
+      words: ['France', 'Japan', 'Brazil', 'Australia', 'Egypt', 'Canada', 'India'],
+      color: '#45B7D1',
+      isCurrent: false,
+      conqueredBy: null,
+      points: 300
+    },
+    {
+      id: 4,
+      category: 'Fruits',
+      words: ['Apple', 'Banana', 'Orange', 'Grape', 'Strawberry', 'Watermelon', 'Pineapple'],
+      color: '#96CEB4',
+      isCurrent: false,
+      conqueredBy: null,
+      points: 100
+    },
+    {
+      id: 5,
+      category: 'Sports',
+      words: ['Soccer', 'Basketball', 'Tennis', 'Swimming', 'Golf', 'Baseball', 'Volleyball'],
+      color: '#FFEAA7',
+      isCurrent: false,
+      conqueredBy: null,
+      points: 200
+    },
+    {
+      id: 6,
+      category: 'Instruments',
+      words: ['Guitar', 'Piano', 'Violin', 'Drums', 'Flute', 'Trumpet', 'Saxophone'],
+      color: '#DDA0DD',
+      isCurrent: false,
+      conqueredBy: null,
+      points: 300
+    },
+    {
+      id: 7,
+      category: 'Science',
+      words: ['Physics', 'Chemistry', 'Biology', 'Astronomy', 'Geology', 'Mathematics', 'Computer'],
+      color: '#98D8C8',
+      isCurrent: false,
+      conqueredBy: null,
+      points: 500
+    }
+  ];
+
+  // Load initial data from Firebase
+  useEffect(() => {
+    let unsubscribeTeams, unsubscribeBoxes, unsubscribeState;
+
+    const loadInitialData = async () => {
+      try {
+        // Load teams
+        const teamsDoc = doc(db, 'game', 'teams');
+        unsubscribeTeams = onSnapshot(teamsDoc, (doc) => {
+          if (doc.exists()) {
+            const data = doc.data();
+            setTeams(data.teams || defaultTeams);
+          } else {
+            // Initialize with default teams
+            setDoc(teamsDoc, { teams: defaultTeams });
+            setTeams(defaultTeams);
+          }
+          setIsConnected(true);
+        }, (error) => {
+          console.error('Teams listener error:', error);
+          setIsConnected(false);
+        });
+
+        // Load boxes
+        const boxesDoc = doc(db, 'game', 'boxes');
+        unsubscribeBoxes = onSnapshot(boxesDoc, (doc) => {
+          if (doc.exists()) {
+            const data = doc.data();
+            setBoxes(data.boxes || defaultBoxes);
+          } else {
+            // Initialize with default boxes
+            setDoc(boxesDoc, { boxes: defaultBoxes });
+            setBoxes(defaultBoxes);
+          }
+          setIsConnected(true);
+        }, (error) => {
+          console.error('Boxes listener error:', error);
+          setIsConnected(false);
+        });
+
+        // Load game state
+        const gameStateDoc = doc(db, 'game', 'state');
+        unsubscribeState = onSnapshot(gameStateDoc, (doc) => {
+          if (doc.exists()) {
+            const data = doc.data();
+            setCurrentBox(data.currentBox || null);
+            setCurrentWordIndex(data.currentWordIndex || 0);
+            setGameStarted(data.gameStarted || false);
+            setTimer(data.timer || 30);
+            setIsTimerRunning(data.isTimerRunning || false);
+            setCorrectWords(data.correctWords || []);
+            setSkippedWords(data.skippedWords || []);
+          } else {
+            // Initialize with default state
+            const defaultState = {
+              currentBox: null,
+              currentWordIndex: 0,
+              gameStarted: false,
+              timer: 30,
+              isTimerRunning: false,
+              correctWords: [],
+              skippedWords: []
+            };
+            setDoc(gameStateDoc, defaultState);
+          }
+          setIsConnected(true);
+        }, (error) => {
+          console.error('State listener error:', error);
+          setIsConnected(false);
+        });
+
+      } catch (error) {
+        console.error('Error loading data:', error);
+        setIsConnected(false);
+      }
+    };
+
+    if (isAuthenticated) {
+      loadInitialData();
+    }
+
+    return () => {
+      if (unsubscribeTeams) unsubscribeTeams();
+      if (unsubscribeBoxes) unsubscribeBoxes();
+      if (unsubscribeState) unsubscribeState();
+    };
+  }, [isAuthenticated]);
+
+  // Timer effect
+  useEffect(() => {
+    if (isTimerRunning && timer > 0) {
+      timerIntervalRef.current = setInterval(async () => {
+        setTimer(prevTimer => {
+          const newTimer = prevTimer - 1;
+          
+          // Update timer in Firebase
+          const gameStateDoc = doc(db, 'game', 'state');
+          updateDoc(gameStateDoc, { timer: newTimer });
+          
+          if (newTimer <= 0) {
+            clearInterval(timerIntervalRef.current);
+            setIsTimerRunning(false);
+            setGameStarted(false);
+            
+            // Update game state in Firebase
+            updateDoc(gameStateDoc, {
+              isTimerRunning: false,
+              gameStarted: false
+            });
+          }
+          
+          return newTimer;
+        });
+      }, 1000);
+    } else if (timer <= 0) {
+      clearInterval(timerIntervalRef.current);
+    }
+    
+    return () => {
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+      }
+    };
+  }, [isTimerRunning, timer]);
+
+  // Helper function to get current box object
+  const getCurrentBox = () => {
+    return boxes.find(b => b.id === currentBox);
+  };
+
+  // Update Firebase document
+  const updateFirebaseDoc = async (collectionName, data) => {
+    try {
+      const docRef = doc(db, 'game', collectionName);
+      await updateDoc(docRef, data);
+      setIsConnected(true);
+      return true;
+    } catch (error) {
+      console.error(`Error updating ${collectionName}:`, error);
+      setIsConnected(false);
+      return false;
+    }
+  };
+
+  // Start a box
+  const startBox = async (boxId) => {
+    const box = boxes.find(b => b.id === boxId);
+    if (!box || box.conqueredBy) return;
+    
+    // Reset current boxes
+    const updatedBoxes = boxes.map(b => ({
+      ...b,
+      isCurrent: b.id === boxId
+    }));
+    
+    // Update boxes in Firebase
+    await updateFirebaseDoc('boxes', { boxes: updatedBoxes });
+    
+    // Update game state in Firebase
+    await updateFirebaseDoc('state', {
+      currentBox: box.id,
+      currentWordIndex: 0,
+      gameStarted: false,
+      timer: 30,
+      isTimerRunning: false,
+      correctWords: [],
+      skippedWords: []
+    });
+  };
+
+  // Start the game
+  const startGame = async () => {
+    if (currentBox === null) {
+      alert('Please select a box first!');
+      return;
+    }
+
+    await updateFirebaseDoc('state', {
+      gameStarted: true,
+      isTimerRunning: true,
+      timer: 30,
+      currentWordIndex: 0,
+      correctWords: [],
+      skippedWords: []
+    });
+  };
+
+  // Mark word as correct
+  const markCorrect = async () => {
+    if (!gameStarted || currentBox === null) return;
+    
+    const currentBoxObj = getCurrentBox();
+    if (!currentBoxObj) return;
+    
+    const currentWord = currentBoxObj.words[currentWordIndex];
+    const newCorrectWords = [...correctWords, currentWord];
+    
+    // Update correct words in Firebase
+    await updateFirebaseDoc('state', { correctWords: newCorrectWords });
+    
+    // Update team score with rounded value
+    const currentTeam = teams.find(t => t.isPlaying);
+    if (currentTeam && currentBoxObj.words.length > 0) {
+      const pointsPerWord = currentBoxObj.points / currentBoxObj.words.length;
+      const roundedPoints = roundToTwo(pointsPerWord);
+      
+      const updatedTeams = teams.map(team => 
+        team.id === currentTeam.id 
+          ? { ...team, score: roundToTwo(team.score + roundedPoints) }
+          : team
+      );
+      
+      // Update teams in Firebase
+      await updateFirebaseDoc('teams', { teams: updatedTeams });
+    }
+    
+    await nextWord();
+  };
+
+  // Skip word
+  const skipWord = async () => {
+    if (!gameStarted || currentBox === null) return;
+    
+    const currentBoxObj = getCurrentBox();
+    if (!currentBoxObj) return;
+    
+    const currentWord = currentBoxObj.words[currentWordIndex];
+    const newSkippedWords = [...skippedWords, currentWord];
+    
+    // Update skipped words in Firebase
+    await updateFirebaseDoc('state', { skippedWords: newSkippedWords });
+    
+    await nextWord();
+  };
+
+  // Next word
+  const nextWord = async () => {
+    if (currentBox === null) return;
+    
+    const currentBoxObj = getCurrentBox();
+    if (!currentBoxObj) return;
+    
+    if (currentWordIndex < currentBoxObj.words.length - 1) {
+      const newIndex = currentWordIndex + 1;
+      await updateFirebaseDoc('state', { currentWordIndex: newIndex });
+    } else {
+      await endRound();
+    }
+  };
+
+  // End round
+  const endRound = async () => {
+    clearInterval(timerIntervalRef.current);
+    await updateFirebaseDoc('state', {
+      isTimerRunning: false,
+      gameStarted: false,
+      timer: 0
+    });
+  };
+
+  // Switch to next team
+  const switchToNextTeam = async () => {
+    const currentIndex = teams.findIndex(t => t.isPlaying);
+    const nextIndex = (currentIndex + 1) % teams.length;
+    
+    const updatedTeams = teams.map((team, index) => ({
+      ...team,
+      isPlaying: index === nextIndex
+    }));
+    
+    await updateFirebaseDoc('teams', { teams: updatedTeams });
+  };
+
+  // Switch to specific team
+  const switchToTeam = async (teamId) => {
+    const updatedTeams = teams.map(team => ({
+      ...team,
+      isPlaying: team.id === teamId
+    }));
+    
+    await updateFirebaseDoc('teams', { teams: updatedTeams });
+  };
+
+  // Add team
+  const addTeam = async () => {
+    if (!newTeamName.trim() || teams.length >= 4) return;
+    
+    const colors = ['#FF6B6B', '#4D96FF', '#4CAF50', '#FFD700'];
+    const newTeam = {
+      id: teams.length + 1,
+      name: newTeamName.trim(),
+      score: 0,
+      color: colors[teams.length % colors.length],
+      isPlaying: false
+    };
+    
+    const updatedTeams = [...teams, newTeam];
+    await updateFirebaseDoc('teams', { teams: updatedTeams });
+    setNewTeamName('');
+  };
+
+  // Remove team
+  const removeTeam = async (teamId) => {
+    if (teams.length <= 2) return;
+    const teamToRemove = teams.find(t => t.id === teamId);
+    const wasPlaying = teamToRemove?.isPlaying;
+    const newTeams = teams.filter(team => team.id !== teamId);
+    
+    // If we removed the current team, make the first team current
+    if (wasPlaying && newTeams.length > 0) {
+      newTeams[0].isPlaying = true;
+    }
+    
+    await updateFirebaseDoc('teams', { teams: newTeams });
+  };
+
+  // Edit team score
+  const startEditTeamScore = (teamId, currentScore) => {
+    setEditingTeamScore(teamId);
+    setTempTeamScore(currentScore.toString());
+  };
+
+  // Save team score
+  const saveTeamScore = async (teamId) => {
+    const score = parseFloat(tempTeamScore);
+    if (isNaN(score)) {
+      alert('Please enter a valid number');
+      return;
+    }
+
+    const updatedTeams = teams.map(team =>
+      team.id === teamId
+        ? { ...team, score: roundToTwo(score) }
+        : team
+    );
+
+    await updateFirebaseDoc('teams', { teams: updatedTeams });
+    setEditingTeamScore(null);
+    setTempTeamScore('');
+  };
+
+  // Cancel editing score
+  const cancelEditTeamScore = () => {
+    setEditingTeamScore(null);
+    setTempTeamScore('');
+  };
+
+  // Edit box category name
+  const editBoxCategory = (boxId) => {
+    const box = boxes.find(b => b.id === boxId);
+    if (!box) return;
+    
+    setEditingCategory(boxId);
+    setNewCategoryName(box.category);
+  };
+
+  // Save box category name
+  const saveBoxCategory = async (boxId) => {
+    if (!newCategoryName.trim()) return;
+    
+    const updatedBoxes = boxes.map(box => 
+      box.id === boxId 
+        ? { ...box, category: newCategoryName.trim() }
+        : box
+    );
+    
+    await updateFirebaseDoc('boxes', { boxes: updatedBoxes });
+    setEditingCategory(null);
+    setNewCategoryName('');
+  };
+
+  // Cancel editing category
+  const cancelEditCategory = () => {
+    setEditingCategory(null);
+    setNewCategoryName('');
+  };
+
+  // Add word to box
+  const addWordToBox = async (boxIndex) => {
+    if (!newWord.trim()) return;
+    
+    const updatedBoxes = [...boxes];
+    updatedBoxes[boxIndex].words.push(newWord.trim());
+    await updateFirebaseDoc('boxes', { boxes: updatedBoxes });
+    setNewWord('');
+  };
+
+  // Remove word from box
+  const removeWordFromBox = async (boxIndex, wordIndex) => {
+    const updatedBoxes = [...boxes];
+    updatedBoxes[boxIndex].words.splice(wordIndex, 1);
+    await updateFirebaseDoc('boxes', { boxes: updatedBoxes });
+  };
+
+  // Conquer box for current team
+  const conquerBox = async () => {
+    const currentTeam = teams.find(t => t.isPlaying);
+    if (!currentTeam || currentBox === null) return;
+    
+    const currentBoxIndex = boxes.findIndex(b => b.id === currentBox);
+    if (currentBoxIndex === -1) return;
+    
+    const updatedBoxes = [...boxes];
+    updatedBoxes[currentBoxIndex].conqueredBy = currentTeam.name;
+    updatedBoxes[currentBoxIndex].isCurrent = false;
+    
+    // Award box points (rounded)
+    const updatedTeams = teams.map(team => 
+      team.id === currentTeam.id 
+        ? { ...team, score: roundToTwo(team.score + boxes[currentBoxIndex].points) }
+        : team
+    );
+    
+    await updateFirebaseDoc('boxes', { boxes: updatedBoxes });
+    await updateFirebaseDoc('teams', { teams: updatedTeams });
+    
+    await updateFirebaseDoc('state', {
+      currentBox: null,
+      gameStarted: false,
+      isTimerRunning: false,
+      timer: 30
+    });
+    
+    clearInterval(timerIntervalRef.current);
+  };
+
+  // Reset box
+  const resetBox = async (boxIndex) => {
+    const updatedBoxes = [...boxes];
+    updatedBoxes[boxIndex].conqueredBy = null;
+    updatedBoxes[boxIndex].isCurrent = false;
+    await updateFirebaseDoc('boxes', { boxes: updatedBoxes });
+  };
+
+  // Reset entire game
+  const resetGame = async () => {
+    if (window.confirm('Are you sure you want to reset the entire game? This will clear all scores and conquered boxes.')) {
+      const resetTeams = [
+        { id: 1, name: 'Team Red', score: 0, color: '#FF6B6B', isPlaying: true },
+        { id: 2, name: 'Team Blue', score: 0, color: '#4D96FF', isPlaying: false },
+        { id: 3, name: 'Team Green', score: 0, color: '#4CAF50', isPlaying: false }
+      ];
+      
+      const resetBoxes = boxes.map(box => ({
+        ...box,
+        isCurrent: false,
+        conqueredBy: null
+      }));
+      
+      const resetState = {
+        currentBox: null,
+        currentWordIndex: 0,
+        gameStarted: false,
+        isTimerRunning: false,
+        timer: 30,
+        correctWords: [],
+        skippedWords: []
+      };
+      
+      await updateFirebaseDoc('teams', { teams: resetTeams });
+      await updateFirebaseDoc('boxes', { boxes: resetBoxes });
+      await updateFirebaseDoc('state', resetState);
+      
+      clearInterval(timerIntervalRef.current);
+    }
+  };
+
+  // Get current team
+  const currentTeam = teams.find(t => t.isPlaying);
 
   if (loading) {
     return (
@@ -127,857 +715,593 @@ function ProtectedAdminPanel() {
       <button onClick={handleLogout} className="logout-btn">
         Logout
       </button>
-      <AdminPanel />
-    </div>
-  );
-}
-
-// Helper function to round to 2 decimal places
-const roundToTwo = (num) => {
-  return Math.round((num + Number.EPSILON) * 100) / 100;
-};
-
-// Admin Panel Component
-function AdminPanel() {
-  const [teams, setTeams] = useState(() => {
-    const saved = localStorage.getItem('pyramidGameTeams');
-    return saved ? JSON.parse(saved) : [
-      { id: 1, name: 'Team Red', score: 0, color: '#FF6B6B', isPlaying: true },
-      { id: 2, name: 'Team Blue', score: 0, color: '#4D96FF', isPlaying: false },
-      { id: 3, name: 'Team Green', score: 0, color: '#4CAF50', isPlaying: false }
-    ];
-  });
-  
-  const [boxes, setBoxes] = useState(() => {
-    const saved = localStorage.getItem('pyramidGameBoxes');
-    return saved ? JSON.parse(saved) : [
-      {
-        id: 1,
-        category: 'Movies',
-        words: ['Titanic', 'Avatar', 'Star Wars', 'Harry Potter', 'Inception', 'The Matrix', 'Frozen'],
-        color: '#FF6B6B',
-        isCurrent: false,
-        conqueredBy: null,
-        points: 100
-      },
-      {
-        id: 2,
-        category: 'Animals',
-        words: ['Lion', 'Elephant', 'Dolphin', 'Eagle', 'Penguin', 'Giraffe', 'Kangaroo'],
-        color: '#4ECDC4',
-        isCurrent: false,
-        conqueredBy: null,
-        points: 200
-      },
-      {
-        id: 3,
-        category: 'Countries',
-        words: ['France', 'Japan', 'Brazil', 'Australia', 'Egypt', 'Canada', 'India'],
-        color: '#45B7D1',
-        isCurrent: false,
-        conqueredBy: null,
-        points: 300
-      },
-      {
-        id: 4,
-        category: 'Fruits',
-        words: ['Apple', 'Banana', 'Orange', 'Grape', 'Strawberry', 'Watermelon', 'Pineapple'],
-        color: '#96CEB4',
-        isCurrent: false,
-        conqueredBy: null,
-        points: 100
-      },
-      {
-        id: 5,
-        category: 'Sports',
-        words: ['Soccer', 'Basketball', 'Tennis', 'Swimming', 'Golf', 'Baseball', 'Volleyball'],
-        color: '#FFEAA7',
-        isCurrent: false,
-        conqueredBy: null,
-        points: 200
-      },
-      {
-        id: 6,
-        category: 'Instruments',
-        words: ['Guitar', 'Piano', 'Violin', 'Drums', 'Flute', 'Trumpet', 'Saxophone'],
-        color: '#DDA0DD',
-        isCurrent: false,
-        conqueredBy: null,
-        points: 300
-      },
-      {
-        id: 7,
-        category: 'Science',
-        words: ['Physics', 'Chemistry', 'Biology', 'Astronomy', 'Geology', 'Mathematics', 'Computer'],
-        color: '#98D8C8',
-        isCurrent: false,
-        conqueredBy: null,
-        points: 500
-      }
-    ];
-  });
-  
-  const [currentBox, setCurrentBox] = useState(() => {
-    const saved = localStorage.getItem('pyramidGameCurrentBox');
-    return saved ? JSON.parse(saved) : null;
-  });
-  const [currentWordIndex, setCurrentWordIndex] = useState(0);
-  const [gameStarted, setGameStarted] = useState(false);
-  const [timer, setTimer] = useState(30);
-  const [isTimerRunning, setIsTimerRunning] = useState(false);
-  const [correctWords, setCorrectWords] = useState([]);
-  const [skippedWords, setSkippedWords] = useState([]);
-  const [newTeamName, setNewTeamName] = useState('');
-  const [newWord, setNewWord] = useState('');
-  const [newCategoryName, setNewCategoryName] = useState('');
-  const [selectedBoxForWords, setSelectedBoxForWords] = useState(0);
-  const [editingCategory, setEditingCategory] = useState(null);
-
-  // Function to broadcast game state to all tabs - FIXED INFINITE LOOP
-  const broadcastGameState = useCallback(() => {
-    const gameState = {
-      teams,
-      boxes,
-      currentBox,
-      currentWordIndex,
-      gameStarted,
-      timer,
-      isTimerRunning,
-      correctWords,
-      skippedWords,
-      timestamp: Date.now()
-    };
-    gameChannel.postMessage({ type: 'GAME_STATE_UPDATE', payload: gameState });
-    // Save to localStorage for persistence
-    localStorage.setItem('pyramidGameState', JSON.stringify(gameState));
-  }, [teams, boxes, currentBox, currentWordIndex, gameStarted, timer, isTimerRunning, correctWords, skippedWords]);
-
-  // Save to localStorage and broadcast when state changes
-  useEffect(() => {
-    localStorage.setItem('pyramidGameTeams', JSON.stringify(teams));
-    broadcastGameState();
-  }, [teams, broadcastGameState]);
-
-  useEffect(() => {
-    localStorage.setItem('pyramidGameBoxes', JSON.stringify(boxes));
-    broadcastGameState();
-  }, [boxes, broadcastGameState]);
-
-  useEffect(() => {
-    localStorage.setItem('pyramidGameCurrentBox', JSON.stringify(currentBox));
-    broadcastGameState();
-  }, [currentBox, broadcastGameState]);
-
-  useEffect(() => {
-    localStorage.setItem('pyramidGameCurrentWordIndex', JSON.stringify(currentWordIndex));
-    broadcastGameState();
-  }, [currentWordIndex, broadcastGameState]);
-
-  useEffect(() => {
-    localStorage.setItem('pyramidGameStarted', JSON.stringify(gameStarted));
-    broadcastGameState();
-  }, [gameStarted, broadcastGameState]);
-
-  useEffect(() => {
-    localStorage.setItem('pyramidGameTimer', JSON.stringify(timer));
-    broadcastGameState();
-  }, [timer, broadcastGameState]);
-
-  useEffect(() => {
-    localStorage.setItem('pyramidGameCorrectWords', JSON.stringify(correctWords));
-    broadcastGameState();
-  }, [correctWords, broadcastGameState]);
-
-  useEffect(() => {
-    localStorage.setItem('pyramidGameSkippedWords', JSON.stringify(skippedWords));
-    broadcastGameState();
-  }, [skippedWords, broadcastGameState]);
-
-  // Helper function to get current box object
-  const getCurrentBox = () => {
-    return boxes.find(b => b.id === currentBox);
-  };
-
-  // Timer - FIXED: Added proper cleanup
-  useEffect(() => {
-    let interval;
-    if (isTimerRunning && timer > 0) {
-      interval = setInterval(() => {
-        setTimer(prev => {
-          const newTimer = prev - 1;
-          if (newTimer <= 0) {
-            clearInterval(interval);
-            setIsTimerRunning(false);
-            setGameStarted(false);
-          }
-          return newTimer;
-        });
-      }, 1000);
-    }
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [isTimerRunning, timer]);
-
-  // Start a box
-  const startBox = (boxId) => {
-    const box = boxes.find(b => b.id === boxId);
-    if (!box) return;
-    
-    // Reset current boxes
-    const updatedBoxes = boxes.map((box) => ({
-      ...box,
-      isCurrent: box.id === boxId
-    }));
-    
-    setBoxes(updatedBoxes);
-    setCurrentBox(box.id);
-    setCurrentWordIndex(0);
-    setCorrectWords([]);
-    setSkippedWords([]);
-    setTimer(30);
-    setIsTimerRunning(false);
-    setGameStarted(false);
-  };
-
-  // Start the game
-  const startGame = () => {
-    if (currentBox === null) {
-      alert('Please select a box first!');
-      return;
-    }
-    setGameStarted(true);
-    setIsTimerRunning(true);
-  };
-
-  // Mark word as correct - FIXED: Round points to 2 decimal places
-  const markCorrect = () => {
-    if (!gameStarted || currentBox === null) return;
-    
-    const currentBoxObj = getCurrentBox();
-    if (!currentBoxObj) return;
-    
-    const currentWord = currentBoxObj.words[currentWordIndex];
-    setCorrectWords(prev => [...prev, currentWord]);
-    
-    // Update team score with rounded value
-    const currentTeam = teams.find(t => t.isPlaying);
-    if (currentTeam && currentBoxObj.words.length > 0) {
-      const pointsPerWord = currentBoxObj.points / currentBoxObj.words.length;
-      const roundedPoints = roundToTwo(pointsPerWord);
-      
-      setTeams(teams.map(team => 
-        team.id === currentTeam.id 
-          ? { ...team, score: roundToTwo(team.score + roundedPoints) }
-          : team
-      ));
-    }
-    
-    nextWord();
-  };
-
-  // Skip word
-  const skipWord = () => {
-    if (!gameStarted || currentBox === null) return;
-    
-    const currentBoxObj = getCurrentBox();
-    if (!currentBoxObj) return;
-    
-    const currentWord = currentBoxObj.words[currentWordIndex];
-    setSkippedWords(prev => [...prev, currentWord]);
-    
-    nextWord();
-  };
-
-  // Next word - FIXED: Proper round ending
-  const nextWord = () => {
-    if (currentBox === null) return;
-    
-    const currentBoxObj = getCurrentBox();
-    if (!currentBoxObj) return;
-    
-    if (currentWordIndex < currentBoxObj.words.length - 1) {
-      setCurrentWordIndex(prev => prev + 1);
-    } else {
-      endRound();
-    }
-  };
-
-  // End round
-  const endRound = () => {
-    setIsTimerRunning(false);
-    setGameStarted(false);
-    // Don't reset current box here, let admin decide
-  };
-
-  // Switch to next team
-  const switchToNextTeam = () => {
-    const currentIndex = teams.findIndex(t => t.isPlaying);
-    const nextIndex = (currentIndex + 1) % teams.length;
-    
-    setTeams(teams.map((team, index) => ({
-      ...team,
-      isPlaying: index === nextIndex
-    })));
-  };
-
-  // Switch to specific team
-  const switchToTeam = (teamId) => {
-    setTeams(teams.map(team => ({
-      ...team,
-      isPlaying: team.id === teamId
-    })));
-  };
-
-  // Add team
-  const addTeam = () => {
-    if (!newTeamName.trim() || teams.length >= 4) return;
-    
-    const colors = ['#FF6B6B', '#4D96FF', '#4CAF50', '#FFD700'];
-    const newTeam = {
-      id: teams.length + 1,
-      name: newTeamName.trim(),
-      score: 0,
-      color: colors[teams.length],
-      isPlaying: false
-    };
-    
-    setTeams([...teams, newTeam]);
-    setNewTeamName('');
-  };
-
-  // Remove team
-  const removeTeam = (teamId) => {
-    if (teams.length <= 2) return;
-    const teamToRemove = teams.find(t => t.id === teamId);
-    const wasPlaying = teamToRemove?.isPlaying;
-    const newTeams = teams.filter(team => team.id !== teamId);
-    
-    // If we removed the current team, make the first team current
-    if (wasPlaying && newTeams.length > 0) {
-      newTeams[0].isPlaying = true;
-    }
-    
-    setTeams(newTeams);
-  };
-
-  // Edit box category name
-  const editBoxCategory = (boxId) => {
-    const box = boxes.find(b => b.id === boxId);
-    if (!box) return;
-    
-    setEditingCategory(boxId);
-    setNewCategoryName(box.category);
-  };
-
-  // Save box category name
-  const saveBoxCategory = (boxId) => {
-    if (!newCategoryName.trim()) return;
-    
-    const updatedBoxes = boxes.map(box => 
-      box.id === boxId 
-        ? { ...box, category: newCategoryName.trim() }
-        : box
-    );
-    
-    setBoxes(updatedBoxes);
-    setEditingCategory(null);
-    setNewCategoryName('');
-  };
-
-  // Cancel editing category
-  const cancelEditCategory = () => {
-    setEditingCategory(null);
-    setNewCategoryName('');
-  };
-
-  // Add word to box
-  const addWordToBox = (boxIndex) => {
-    if (!newWord.trim()) return;
-    
-    const updatedBoxes = [...boxes];
-    updatedBoxes[boxIndex].words.push(newWord.trim());
-    setBoxes(updatedBoxes);
-    setNewWord('');
-  };
-
-  // Remove word from box
-  const removeWordFromBox = (boxIndex, wordIndex) => {
-    const updatedBoxes = [...boxes];
-    updatedBoxes[boxIndex].words.splice(wordIndex, 1);
-    setBoxes(updatedBoxes);
-  };
-
-  // Conquer box for current team - FIXED: Round points
-  const conquerBox = () => {
-    const currentTeam = teams.find(t => t.isPlaying);
-    if (!currentTeam || currentBox === null) return;
-    
-    const currentBoxIndex = boxes.findIndex(b => b.id === currentBox);
-    if (currentBoxIndex === -1) return;
-    
-    const updatedBoxes = [...boxes];
-    updatedBoxes[currentBoxIndex].conqueredBy = currentTeam.name;
-    updatedBoxes[currentBoxIndex].isCurrent = false;
-    
-    // Award box points (rounded)
-    setTeams(teams.map(team => 
-      team.id === currentTeam.id 
-        ? { ...team, score: roundToTwo(team.score + boxes[currentBoxIndex].points) }
-        : team
-    ));
-    
-    setBoxes(updatedBoxes);
-    setCurrentBox(null);
-    setGameStarted(false);
-    setIsTimerRunning(false);
-  };
-
-  // Reset box
-  const resetBox = (boxIndex) => {
-    const updatedBoxes = [...boxes];
-    updatedBoxes[boxIndex].conqueredBy = null;
-    setBoxes(updatedBoxes);
-  };
-
-  // Reset entire game
-  const resetGame = () => {
-    if (window.confirm('Are you sure you want to reset the entire game? This will clear all scores and conquered boxes.')) {
-      const resetTeams = [
-        { id: 1, name: 'Team Red', score: 0, color: '#FF6B6B', isPlaying: true },
-        { id: 2, name: 'Team Blue', score: 0, color: '#4D96FF', isPlaying: false },
-        { id: 3, name: 'Team Green', score: 0, color: '#4CAF50', isPlaying: false }
-      ];
-      
-      const resetBoxes = boxes.map(box => ({
-        ...box,
-        isCurrent: false,
-        conqueredBy: null
-      }));
-      
-      setTeams(resetTeams);
-      setBoxes(resetBoxes);
-      setCurrentBox(null);
-      setCurrentWordIndex(0);
-      setGameStarted(false);
-      setIsTimerRunning(false);
-      setTimer(30);
-      setCorrectWords([]);
-      setSkippedWords([]);
-      
-      // Clear localStorage
-      localStorage.removeItem('pyramidGameTeams');
-      localStorage.removeItem('pyramidGameBoxes');
-      localStorage.removeItem('pyramidGameCurrentBox');
-      localStorage.removeItem('pyramidGameCurrentWordIndex');
-      localStorage.removeItem('pyramidGameStarted');
-      localStorage.removeItem('pyramidGameTimer');
-      localStorage.removeItem('pyramidGameCorrectWords');
-      localStorage.removeItem('pyramidGameSkippedWords');
-      localStorage.removeItem('pyramidGameState');
-    }
-  };
-
-  // Get current team
-  const currentTeam = teams.find(t => t.isPlaying);
-
-  return (
-    <div className="admin-panel">
-      {/* Admin Header */}
-      <div className="header">
-        <h1>🎪 Betaliz Word Game - Admin Panel</h1>
-        <div className="admin-status">
-          <span className="status-indicator connected">🟢 Connected</span>
-          <span className="player-count">👥 Players connected: {teams.length}</span>
+      <div className="admin-panel">
+        {/* Admin Header */}
+        <div className="header">
+          <h1>🎪 Betaliz Word Game - Admin Panel</h1>
+          <div className="admin-status">
+            <span className={`status-indicator ${isConnected ? 'connected' : 'disconnected'}`}>
+              {isConnected ? '🟢 Connected' : '🔴 Disconnected'}
+            </span>
+            <span className="player-count">👥 Teams: {teams.length}</span>
+          </div>
         </div>
-      </div>
 
-      <div className="admin-grid">
-        {/* Left Column: Teams & Game Control */}
-        <div className="left-column">
-          {/* Teams Management */}
-          <div className="card">
-            <h2>👥 Teams Management</h2>
-            <div className="add-team">
-              <input
-                type="text"
-                placeholder="Enter team name"
-                value={newTeamName}
-                onChange={(e) => setNewTeamName(e.target.value)}
-                className="team-input"
-              />
-              <button onClick={addTeam} className="add-btn" disabled={teams.length >= 4}>
-                + Add Team
-              </button>
-            </div>
-            
-            <div className="teams-list">
-              {teams.map(team => (
-                <div 
-                  key={team.id} 
-                  className={`team-card ${team.isPlaying ? 'active' : ''}`}
-                  style={{ borderLeftColor: team.color }}
-                >
-                  <div className="team-info">
-                    <div className="team-color" style={{ backgroundColor: team.color }} />
-                    <div className="team-details">
-                      <div className="team-name">{team.name}</div>
-                      <div className="team-score">{team.score.toFixed(2)} points</div>
+        <div className="admin-grid">
+          {/* Left Column: Teams & Game Control */}
+          <div className="left-column">
+            {/* Teams Management */}
+            <div className="card">
+              <h2>👥 Teams Management</h2>
+              <div className="add-team">
+                <input
+                  type="text"
+                  placeholder="Enter team name"
+                  value={newTeamName}
+                  onChange={(e) => setNewTeamName(e.target.value)}
+                  className="team-input"
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      addTeam();
+                    }
+                  }}
+                />
+                <button onClick={addTeam} className="add-btn" disabled={teams.length >= 4}>
+                  + Add Team
+                </button>
+              </div>
+              
+              <div className="teams-list">
+                {teams.map(team => (
+                  <div 
+                    key={team.id} 
+                    className={`team-card ${team.isPlaying ? 'active' : ''}`}
+                    style={{ borderLeftColor: team.color }}
+                  >
+                    <div className="team-info">
+                      <div className="team-color" style={{ backgroundColor: team.color }} />
+                      <div className="team-details">
+                        <div className="team-name">{team.name}</div>
+                        {editingTeamScore === team.id ? (
+                          <div className="team-score-edit">
+                            <input
+                              type="number"
+                              value={tempTeamScore}
+                              onChange={(e) => setTempTeamScore(e.target.value)}
+                              className="team-input score-input"
+                              autoFocus
+                              onKeyPress={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  saveTeamScore(team.id);
+                                }
+                              }}
+                            />
+                            <div className="score-edit-buttons">
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  saveTeamScore(team.id);
+                                }}
+                                className="save-btn"
+                              >
+                                ✓
+                              </button>
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  cancelEditTeamScore();
+                                }}
+                                className="cancel-btn"
+                              >
+                                ✗
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div 
+                            className="team-score"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              startEditTeamScore(team.id, team.score);
+                            }}
+                            style={{ cursor: 'pointer' }}
+                            title="Click to edit score"
+                          >
+                            {team.score.toFixed(2)} points
+                          </div>
+                        )}
+                      </div>
+                      <div className="team-actions">
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            switchToTeam(team.id);
+                          }}
+                          className={`switch-btn ${team.isPlaying ? 'current' : ''}`}
+                        >
+                          {team.isPlaying ? '🎯 Current' : 'Set Active'}
+                        </button>
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeTeam(team.id);
+                          }}
+                          className="remove-btn"
+                          disabled={teams.length <= 2}
+                        >
+                          ×
+                        </button>
+                      </div>
                     </div>
-                    <div className="team-actions">
+                  </div>
+                ))}
+              </div>
+              
+              <div className="team-quick-actions">
+                <button onClick={switchToNextTeam} className="quick-btn">
+                  🔄 Switch to Next Team
+                </button>
+                <button 
+                  onClick={async () => {
+                    const updatedTeams = teams.map(t => ({ ...t, score: 0 }));
+                    await updateFirebaseDoc('teams', { teams: updatedTeams });
+                  }}
+                  className="quick-btn reset"
+                >
+                  🔄 Reset All Scores
+                </button>
+                <button 
+                  onClick={resetGame}
+                  className="quick-btn danger"
+                >
+                  ⚠️ Reset Entire Game
+                </button>
+              </div>
+            </div>
+
+            {/* Game Control */}
+            <div className="card">
+              <h2>🎮 Game Control</h2>
+              <div className="game-controls">
+                <div className="control-info">
+                  <div className="info-item">
+                    <span className="label">Current Team:</span>
+                    <span className="value" style={{ color: currentTeam?.color }}>
+                      {currentTeam?.name || 'No team selected'}
+                    </span>
+                  </div>
+                  <div className="info-item">
+                    <span className="label">Current Box:</span>
+                    <span className="value">
+                      {currentBox !== null ? boxes.find(b => b.id === currentBox)?.category : 'No box selected'}
+                    </span>
+                  </div>
+                  <div className="info-item">
+                    <span className="label">Timer:</span>
+                    <span className={`timer ${timer <= 10 ? 'warning' : ''}`}>
+                      {timer}s
+                    </span>
+                  </div>
+                  <div className="info-item">
+                    <span className="label">Progress:</span>
+                    <span className="value">
+                      {correctWords.length} / {getCurrentBox()?.words?.length || 0} words
+                    </span>
+                  </div>
+                </div>
+                
+                <div className="control-buttons">
+                  <button 
+                    onClick={startGame}
+                    disabled={gameStarted || currentBox === null}
+                    className="control-btn start-btn"
+                  >
+                    ▶ Start Round
+                  </button>
+                  <button 
+                    onClick={markCorrect}
+                    disabled={!gameStarted}
+                    className="control-btn correct-btn"
+                  >
+                    ✓ Correct Guess
+                  </button>
+                  <button 
+                    onClick={skipWord}
+                    disabled={!gameStarted}
+                    className="control-btn skip-btn"
+                  >
+                    ⏭ Skip Word
+                  </button>
+                  <button 
+                    onClick={conquerBox}
+                    disabled={!gameStarted || getCurrentBox()?.conqueredBy}
+                    className="control-btn conquer-btn"
+                  >
+                    🏆 Conquer Box
+                  </button>
+                  <button 
+                    onClick={endRound}
+                    className="control-btn end-btn"
+                  >
+                    ⏹ End Round
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Right Column: Pyramid Boxes */}
+          <div className="right-column">
+            <div className="card">
+              <h2>📦 Pyramid Boxes</h2>
+              <div className="admin-pyramid">
+                {/* Row 1: Box 1 */}
+                <div className="pyramid-row">
+                  <div 
+                    className={`pyramid-box ${boxes[0]?.isCurrent ? 'current' : ''} ${boxes[0]?.conqueredBy ? 'conquered' : ''}`}
+                    onClick={() => !boxes[0]?.conqueredBy && editingCategory !== 1 && startBox(1)}
+                    style={{ 
+                      backgroundColor: boxes[0]?.conqueredBy ? '#aaa' : boxes[0]?.color,
+                      cursor: boxes[0]?.conqueredBy || editingCategory === 1 ? 'not-allowed' : 'pointer',
+                      opacity: boxes[0]?.conqueredBy ? 0.7 : 1
+                    }}
+                  >
+                    {editingCategory === 1 ? (
+                      <div className="category-edit-form">
+                        <input
+                          type="text"
+                          value={newCategoryName}
+                          onChange={(e) => setNewCategoryName(e.target.value)}
+                          className="category-input"
+                          autoFocus
+                          onKeyPress={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              saveBoxCategory(1);
+                            }
+                          }}
+                        />
+                        <div className="edit-buttons">
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              saveBoxCategory(1);
+                            }}
+                            className="save-btn"
+                          >
+                            ✓
+                          </button>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              cancelEditCategory();
+                            }}
+                            className="cancel-btn"
+                          >
+                            ✗
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="box-number">1</div>
+                        <div className="box-category">{boxes[0]?.category}</div>
+                        <div className="box-points">{boxes[0]?.points} pts</div>
+                        {boxes[0]?.conqueredBy && (
+                          <div className="conquered-label">🏆 {boxes[0]?.conqueredBy}</div>
+                        )}
+                      </>
+                    )}
+                    {!boxes[0]?.conqueredBy && editingCategory !== 1 && (
                       <button 
-                        onClick={() => switchToTeam(team.id)}
-                        className={`switch-btn ${team.isPlaying ? 'current' : ''}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          editBoxCategory(1);
+                        }}
+                        className="edit-category-btn"
+                        title="Edit category name"
                       >
-                        {team.isPlaying ? '🎯 Current' : 'Set Active'}
+                        ✏️
                       </button>
+                    )}
+                  </div>
+                </div>
+                
+                {/* Row 2: Box 2, 3 */}
+                <div className="pyramid-row">
+                  {[1, 2].map(index => {
+                    const box = boxes[index];
+                    const boxId = box?.id;
+                    return (
+                      <div 
+                        key={boxId}
+                        className={`pyramid-box ${box?.isCurrent ? 'current' : ''} ${box?.conqueredBy ? 'conquered' : ''}`}
+                        onClick={() => !box?.conqueredBy && editingCategory !== boxId && startBox(boxId)}
+                        style={{ 
+                          backgroundColor: box?.conqueredBy ? '#aaa' : box?.color,
+                          cursor: box?.conqueredBy || editingCategory === boxId ? 'not-allowed' : 'pointer',
+                          opacity: box?.conqueredBy ? 0.7 : 1
+                        }}
+                      >
+                        {editingCategory === boxId ? (
+                          <div className="category-edit-form">
+                            <input
+                              type="text"
+                              value={newCategoryName}
+                              onChange={(e) => setNewCategoryName(e.target.value)}
+                              className="category-input"
+                              autoFocus
+                              onKeyPress={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  saveBoxCategory(boxId);
+                                }
+                              }}
+                            />
+                            <div className="edit-buttons">
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  saveBoxCategory(boxId);
+                                }}
+                                className="save-btn"
+                              >
+                                ✓
+                              </button>
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  cancelEditCategory();
+                                }}
+                                className="cancel-btn"
+                              >
+                                ✗
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="box-number">{box?.id}</div>
+                            <div className="box-category">{box?.category}</div>
+                            <div className="box-points">{box?.points} pts</div>
+                            {box?.conqueredBy && (
+                              <div className="conquered-label">🏆 {box?.conqueredBy}</div>
+                            )}
+                          </>
+                        )}
+                        {!box?.conqueredBy && editingCategory !== boxId && (
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              editBoxCategory(boxId);
+                            }}
+                            className="edit-category-btn"
+                            title="Edit category name"
+                          >
+                            ✏️
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                
+                {/* Row 3: Box 4, 5, 6 */}
+                <div className="pyramid-row">
+                  {[3, 4, 5].map(index => {
+                    const box = boxes[index];
+                    const boxId = box?.id;
+                    return (
+                      <div 
+                        key={boxId}
+                        className={`pyramid-box ${box?.isCurrent ? 'current' : ''} ${box?.conqueredBy ? 'conquered' : ''}`}
+                        onClick={() => !box?.conqueredBy && editingCategory !== boxId && startBox(boxId)}
+                        style={{ 
+                          backgroundColor: box?.conqueredBy ? '#aaa' : box?.color,
+                          cursor: box?.conqueredBy || editingCategory === boxId ? 'not-allowed' : 'pointer',
+                          opacity: box?.conqueredBy ? 0.7 : 1
+                        }}
+                      >
+                        {editingCategory === boxId ? (
+                          <div className="category-edit-form">
+                            <input
+                              type="text"
+                              value={newCategoryName}
+                              onChange={(e) => setNewCategoryName(e.target.value)}
+                              className="category-input"
+                              autoFocus
+                              onKeyPress={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  saveBoxCategory(boxId);
+                                }
+                              }}
+                            />
+                            <div className="edit-buttons">
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  saveBoxCategory(boxId);
+                                }}
+                                className="save-btn"
+                              >
+                                ✓
+                              </button>
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  cancelEditCategory();
+                                }}
+                                className="cancel-btn"
+                              >
+                                ✗
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="box-number">{box?.id}</div>
+                            <div className="box-category">{box?.category}</div>
+                            <div className="box-points">{box?.points} pts</div>
+                            {box?.conqueredBy && (
+                              <div className="conquered-label">🏆 {box?.conqueredBy}</div>
+                            )}
+                          </>
+                        )}
+                        {!box?.conqueredBy && editingCategory !== boxId && (
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              editBoxCategory(boxId);
+                            }}
+                            className="edit-category-btn"
+                            title="Edit category name"
+                          >
+                            ✏️
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                
+                {/* Row 4: Box 7 */}
+                <div className="pyramid-row">
+                  <div 
+                    className={`pyramid-box ${boxes[6]?.isCurrent ? 'current' : ''} ${boxes[6]?.conqueredBy ? 'conquered' : ''}`}
+                    onClick={() => !boxes[6]?.conqueredBy && editingCategory !== 7 && startBox(7)}
+                    style={{ 
+                      backgroundColor: boxes[6]?.conqueredBy ? '#aaa' : boxes[6]?.color,
+                      cursor: boxes[6]?.conqueredBy || editingCategory === 7 ? 'not-allowed' : 'pointer',
+                      opacity: boxes[6]?.conqueredBy ? 0.7 : 1
+                    }}
+                  >
+                    {editingCategory === 7 ? (
+                      <div className="category-edit-form">
+                        <input
+                          type="text"
+                          value={newCategoryName}
+                          onChange={(e) => setNewCategoryName(e.target.value)}
+                          className="category-input"
+                          autoFocus
+                          onKeyPress={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              saveBoxCategory(7);
+                            }
+                          }}
+                        />
+                        <div className="edit-buttons">
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              saveBoxCategory(7);
+                            }}
+                            className="save-btn"
+                          >
+                            ✓
+                          </button>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              cancelEditCategory();
+                            }}
+                            className="cancel-btn"
+                          >
+                            ✗
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="box-number">7</div>
+                        <div className="box-category">{boxes[6]?.category}</div>
+                        <div className="box-points">{boxes[6]?.points} pts</div>
+                        {boxes[6]?.conqueredBy && (
+                          <div className="conquered-label">🏆 {boxes[6]?.conqueredBy}</div>
+                        )}
+                      </>
+                    )}
+                    {!boxes[6]?.conqueredBy && editingCategory !== 7 && (
                       <button 
-                        onClick={() => removeTeam(team.id)}
-                        className="remove-btn"
-                        disabled={teams.length <= 2}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          editBoxCategory(7);
+                        }}
+                        className="edit-category-btn"
+                        title="Edit category name"
+                      >
+                        ✏️
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Words Management for Selected Box */}
+              <div className="words-management">
+                <h3>📝 Words for Box {selectedBoxForWords + 1}: {boxes[selectedBoxForWords]?.category}</h3>
+                <div className="box-selector">
+                  {boxes.map((box, index) => (
+                    <button
+                      key={box.id}
+                      onClick={() => setSelectedBoxForWords(index)}
+                      className={`box-select-btn ${selectedBoxForWords === index ? 'active' : ''}`}
+                      style={{ backgroundColor: box.color }}
+                    >
+                      Box {index + 1}
+                    </button>
+                  ))}
+                </div>
+                
+                <div className="words-list">
+                  {boxes[selectedBoxForWords]?.words.map((word, wordIndex) => (
+                    <div key={wordIndex} className="word-tag">
+                      <span className="word-number">{wordIndex + 1}</span>
+                      {word}
+                      <button 
+                        onClick={() => removeWordFromBox(selectedBoxForWords, wordIndex)}
+                        className="remove-word"
                       >
                         ×
                       </button>
                     </div>
-                  </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-            
-            <div className="team-quick-actions">
-              <button onClick={switchToNextTeam} className="quick-btn">
-                🔄 Switch to Next Team
-              </button>
-              <button 
-                onClick={() => setTeams(teams.map(t => ({ ...t, score: 0 })))}
-                className="quick-btn reset"
-              >
-                🔄 Reset All Scores
-              </button>
-              <button 
-                onClick={resetGame}
-                className="quick-btn danger"
-              >
-                ⚠️ Reset Entire Game
-              </button>
-            </div>
-          </div>
-
-          {/* Game Control */}
-          <div className="card">
-            <h2>🎮 Game Control</h2>
-            <div className="game-controls">
-              <div className="control-info">
-                <div className="info-item">
-                  <span className="label">Current Team:</span>
-                  <span className="value" style={{ color: currentTeam?.color }}>
-                    {currentTeam?.name || 'No team selected'}
-                  </span>
-                </div>
-                <div className="info-item">
-                  <span className="label">Current Box:</span>
-                  <span className="value">
-                    {currentBox !== null ? boxes.find(b => b.id === currentBox)?.category : 'No box selected'}
-                  </span>
-                </div>
-                <div className="info-item">
-                  <span className="label">Timer:</span>
-                  <span className={`timer ${timer <= 10 ? 'warning' : ''}`}>
-                    {timer}s
-                  </span>
-                </div>
-                <div className="info-item">
-                  <span className="label">Progress:</span>
-                  <span className="value">
-                    {correctWords.length} / {getCurrentBox()?.words?.length || 0} words
-                  </span>
-                </div>
-              </div>
-              
-              <div className="control-buttons">
-                <button 
-                  onClick={startGame}
-                  disabled={gameStarted || currentBox === null}
-                  className="control-btn start-btn"
-                >
-                  ▶ Start Round
-                </button>
-                <button 
-                  onClick={markCorrect}
-                  disabled={!gameStarted}
-                  className="control-btn correct-btn"
-                >
-                  ✓ Correct Guess
-                </button>
-                <button 
-                  onClick={skipWord}
-                  disabled={!gameStarted}
-                  className="control-btn skip-btn"
-                >
-                  ⏭ Skip Word
-                </button>
-                <button 
-                  onClick={conquerBox}
-                  disabled={!gameStarted}
-                  className="control-btn conquer-btn"
-                >
-                  🏆 Conquer Box
-                </button>
-                <button 
-                  onClick={endRound}
-                  className="control-btn end-btn"
-                >
-                  ⏹ End Round
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Right Column: Pyramid Boxes */}
-        <div className="right-column">
-          <div className="card">
-            <h2>📦 Pyramid Boxes</h2>
-            <div className="admin-pyramid">
-              {/* Pyramid rows remain the same */}
-              {/* Row 1: Box 1 */}
-              <div className="pyramid-row">
-                <div 
-                  className={`pyramid-box ${boxes[0]?.isCurrent ? 'current' : ''} ${boxes[0]?.conqueredBy ? 'conquered' : ''}`}
-                  onClick={() => startBox(1)}
-                  style={{ backgroundColor: boxes[0]?.conqueredBy ? '#aaa' : boxes[0]?.color }}
-                >
-                  {editingCategory === 1 ? (
-                    <div className="category-edit-form">
-                      <input
-                        type="text"
-                        value={newCategoryName}
-                        onChange={(e) => setNewCategoryName(e.target.value)}
-                        className="category-input"
-                        autoFocus
-                      />
-                      <div className="edit-buttons">
-                        <button onClick={() => saveBoxCategory(1)} className="save-btn">✓</button>
-                        <button onClick={cancelEditCategory} className="cancel-btn">✗</button>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="box-number">1</div>
-                      <div className="box-category">{boxes[0]?.category}</div>
-                      <div className="box-points">{boxes[0]?.points} pts</div>
-                      {boxes[0]?.conqueredBy && (
-                        <div className="conquered-label">🏆 {boxes[0]?.conqueredBy}</div>
-                      )}
-                    </>
-                  )}
-                  <button 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      editBoxCategory(1);
+                
+                <div className="add-word">
+                  <input
+                    type="text"
+                    placeholder="Add new word"
+                    value={newWord}
+                    onChange={(e) => setNewWord(e.target.value)}
+                    className="word-input"
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        addWordToBox(selectedBoxForWords);
+                      }
                     }}
-                    className="edit-category-btn"
-                    title="Edit category name"
-                  >
-                    ✏️
-                  </button>
-                </div>
-              </div>
-              
-              {/* Row 2: Box 2, 3 */}
-              <div className="pyramid-row">
-                {[1, 2].map(index => (
-                  <div 
-                    key={index}
-                    className={`pyramid-box ${boxes[index]?.isCurrent ? 'current' : ''} ${boxes[index]?.conqueredBy ? 'conquered' : ''}`}
-                    onClick={() => startBox(index + 1)}
-                    style={{ backgroundColor: boxes[index]?.conqueredBy ? '#aaa' : boxes[index]?.color }}
-                  >
-                    {editingCategory === index + 1 ? (
-                      <div className="category-edit-form">
-                        <input
-                          type="text"
-                          value={newCategoryName}
-                          onChange={(e) => setNewCategoryName(e.target.value)}
-                          className="category-input"
-                          autoFocus
-                        />
-                        <div className="edit-buttons">
-                          <button onClick={() => saveBoxCategory(index + 1)} className="save-btn">✓</button>
-                          <button onClick={cancelEditCategory} className="cancel-btn">✗</button>
-                        </div>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="box-number">{index + 1}</div>
-                        <div className="box-category">{boxes[index]?.category}</div>
-                        <div className="box-points">{boxes[index]?.points} pts</div>
-                        {boxes[index]?.conqueredBy && (
-                          <div className="conquered-label">🏆 {boxes[index]?.conqueredBy}</div>
-                        )}
-                      </>
-                    )}
-                    <button 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        editBoxCategory(index + 1);
-                      }}
-                      className="edit-category-btn"
-                      title="Edit category name"
-                    >
-                      ✏️
-                    </button>
-                  </div>
-                ))}
-              </div>
-              
-              {/* Row 3: Box 4, 5, 6 */}
-              <div className="pyramid-row">
-                {[3, 4, 5].map(index => (
-                  <div 
-                    key={index}
-                    className={`pyramid-box ${boxes[index]?.isCurrent ? 'current' : ''} ${boxes[index]?.conqueredBy ? 'conquered' : ''}`}
-                    onClick={() => startBox(index + 1)}
-                    style={{ backgroundColor: boxes[index]?.conqueredBy ? '#aaa' : boxes[index]?.color }}
-                  >
-                    {editingCategory === index + 1 ? (
-                      <div className="category-edit-form">
-                        <input
-                          type="text"
-                          value={newCategoryName}
-                          onChange={(e) => setNewCategoryName(e.target.value)}
-                          className="category-input"
-                          autoFocus
-                        />
-                        <div className="edit-buttons">
-                          <button onClick={() => saveBoxCategory(index + 1)} className="save-btn">✓</button>
-                          <button onClick={cancelEditCategory} className="cancel-btn">✗</button>
-                        </div>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="box-number">{index + 1}</div>
-                        <div className="box-category">{boxes[index]?.category}</div>
-                        <div className="box-points">{boxes[index]?.points} pts</div>
-                        {boxes[index]?.conqueredBy && (
-                          <div className="conquered-label">🏆 {boxes[index]?.conqueredBy}</div>
-                        )}
-                      </>
-                    )}
-                    <button 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        editBoxCategory(index + 1);
-                      }}
-                      className="edit-category-btn"
-                      title="Edit category name"
-                    >
-                      ✏️
-                    </button>
-                  </div>
-                ))}
-              </div>
-              
-              {/* Row 4: Box 7 */}
-              <div className="pyramid-row">
-                <div 
-                  className={`pyramid-box ${boxes[6]?.isCurrent ? 'current' : ''} ${boxes[6]?.conqueredBy ? 'conquered' : ''}`}
-                  onClick={() => startBox(7)}
-                  style={{ backgroundColor: boxes[6]?.conqueredBy ? '#aaa' : boxes[6]?.color }}
-                >
-                  {editingCategory === 7 ? (
-                    <div className="category-edit-form">
-                      <input
-                        type="text"
-                        value={newCategoryName}
-                        onChange={(e) => setNewCategoryName(e.target.value)}
-                        className="category-input"
-                        autoFocus
-                      />
-                      <div className="edit-buttons">
-                        <button onClick={() => saveBoxCategory(7)} className="save-btn">✓</button>
-                        <button onClick={cancelEditCategory} className="cancel-btn">✗</button>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="box-number">7</div>
-                      <div className="box-category">{boxes[6]?.category}</div>
-                      <div className="box-points">{boxes[6]?.points} pts</div>
-                      {boxes[6]?.conqueredBy && (
-                        <div className="conquered-label">🏆 {boxes[6]?.conqueredBy}</div>
-                      )}
-                    </>
-                  )}
+                  />
                   <button 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      editBoxCategory(7);
-                    }}
-                    className="edit-category-btn"
-                    title="Edit category name"
+                    onClick={() => addWordToBox(selectedBoxForWords)}
+                    className="add-word-btn"
                   >
-                    ✏️
+                    Add Word
                   </button>
                 </div>
-              </div>
-            </div>
-
-            {/* Words Management for Selected Box */}
-            <div className="words-management">
-              <h3>📝 Words for Box {selectedBoxForWords + 1}: {boxes[selectedBoxForWords]?.category}</h3>
-              <div className="box-selector">
-                {boxes.map((box, index) => (
-                  <button
-                    key={box.id}
-                    onClick={() => setSelectedBoxForWords(index)}
-                    className={`box-select-btn ${selectedBoxForWords === index ? 'active' : ''}`}
-                    style={{ backgroundColor: box.color }}
+                
+                {boxes[selectedBoxForWords]?.conqueredBy && (
+                  <button 
+                    onClick={() => resetBox(selectedBoxForWords)}
+                    className="reset-box-btn"
                   >
-                    Box {index + 1}
+                    🔄 Reset This Box
                   </button>
-                ))}
+                )}
               </div>
-              
-              <div className="words-list">
-                {boxes[selectedBoxForWords]?.words.map((word, wordIndex) => (
-                  <div key={wordIndex} className="word-tag">
-                    <span className="word-number">{wordIndex + 1}</span>
-                    {word}
-                    <button 
-                      onClick={() => removeWordFromBox(selectedBoxForWords, wordIndex)}
-                      className="remove-word"
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
-              </div>
-              
-              <div className="add-word">
-                <input
-                  type="text"
-                  placeholder="Add new word"
-                  value={newWord}
-                  onChange={(e) => setNewWord(e.target.value)}
-                  className="word-input"
-                />
-                <button 
-                  onClick={() => addWordToBox(selectedBoxForWords)}
-                  className="add-word-btn"
-                >
-                  Add Word
-                </button>
-              </div>
-              
-              {boxes[selectedBoxForWords]?.conqueredBy && (
-                <button 
-                  onClick={() => resetBox(selectedBoxForWords)}
-                  className="reset-box-btn"
-                >
-                  🔄 Reset This Box
-                </button>
-              )}
             </div>
           </div>
         </div>
@@ -986,69 +1310,97 @@ function AdminPanel() {
   );
 }
 
-// Player View Component - Updated with better sync
+// Player View Component with Firebase Integration
 function PlayerView() {
-  const [gameState, setGameState] = useState(() => {
-    const saved = localStorage.getItem('pyramidGameState');
-    return saved ? JSON.parse(saved) : null;
-  });
-  
+  const [teams, setTeams] = useState([]);
+  const [boxes, setBoxes] = useState([]);
+  const [currentBox, setCurrentBox] = useState(null);
+  const [currentWordIndex, setCurrentWordIndex] = useState(0);
+  const [gameStarted, setGameStarted] = useState(false);
+  const [timer, setTimer] = useState(30);
+  const [correctWords, setCorrectWords] = useState([]);
+  const [skippedWords, setSkippedWords] = useState([]);
   const [wordDisplayStyle, setWordDisplayStyle] = useState('one-by-one');
-  const [isConnected, setIsConnected] = useState(true);
+  const [isConnected, setIsConnected] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  // Listen for real-time updates from the admin panel
+  // Listen to Firebase updates
   useEffect(() => {
-    const channel = new BroadcastChannel('pyramid_game_channel');
-    
-    const handleMessage = (event) => {
-      if (event.data.type === 'GAME_STATE_UPDATE') {
-        setGameState(event.data.payload);
-        setIsConnected(true);
-      }
-    };
-    
-    channel.addEventListener('message', handleMessage);
-    
-    // Check connection status periodically
-    const connectionCheck = setInterval(() => {
-      if (!gameState || Date.now() - gameState.timestamp > 3000) {
-        setIsConnected(false);
-      } else {
-        setIsConnected(true);
-      }
-    }, 1000);
-    
-    return () => {
-      channel.removeEventListener('message', handleMessage);
-      channel.close();
-      clearInterval(connectionCheck);
-    };
-  }, [gameState]);
+    let unsubscribeTeams, unsubscribeBoxes, unsubscribeState;
 
-  // If no game state yet, show loading
-  if (!gameState) {
+    const setupFirebaseListeners = () => {
+      try {
+        // Listen to teams
+        const teamsDoc = doc(db, 'game', 'teams');
+        unsubscribeTeams = onSnapshot(teamsDoc, (doc) => {
+          if (doc.exists()) {
+            setTeams(doc.data().teams || []);
+            setIsConnected(true);
+          }
+        }, (error) => {
+          console.error('Teams listener error:', error);
+          setIsConnected(false);
+        });
+
+        // Listen to boxes
+        const boxesDoc = doc(db, 'game', 'boxes');
+        unsubscribeBoxes = onSnapshot(boxesDoc, (doc) => {
+          if (doc.exists()) {
+            setBoxes(doc.data().boxes || []);
+            setIsConnected(true);
+          }
+        }, (error) => {
+          console.error('Boxes listener error:', error);
+          setIsConnected(false);
+        });
+
+        // Listen to game state
+        const gameStateDoc = doc(db, 'game', 'state');
+        unsubscribeState = onSnapshot(gameStateDoc, (doc) => {
+          if (doc.exists()) {
+            const data = doc.data();
+            setCurrentBox(data.currentBox || null);
+            setCurrentWordIndex(data.currentWordIndex || 0);
+            setGameStarted(data.gameStarted || false);
+            setTimer(data.timer || 30);
+            setCorrectWords(data.correctWords || []);
+            setSkippedWords(data.skippedWords || []);
+            setIsConnected(true);
+            setLoading(false);
+          }
+        }, (error) => {
+          console.error('State listener error:', error);
+          setIsConnected(false);
+        });
+
+      } catch (error) {
+        console.error('Error setting up Firebase listeners:', error);
+        setIsConnected(false);
+        setLoading(false);
+      }
+    };
+
+    setupFirebaseListeners();
+
+    return () => {
+      if (unsubscribeTeams) unsubscribeTeams();
+      if (unsubscribeBoxes) unsubscribeBoxes();
+      if (unsubscribeState) unsubscribeState();
+    };
+  }, []);
+
+  // If loading, show loading screen
+  if (loading) {
     return (
       <div className="player-view">
         <div className="waiting-screen">
           <div className="waiting-icon">🔄</div>
-          <h3>Waiting for Game Setup...</h3>
-          <p>Please open the admin panel in another tab to start the game.</p>
-          <p>Admin URL: <code>{window.location.origin}/admin</code></p>
+          <h3>Connecting to Game Server...</h3>
+          <p>Please make sure the admin panel is open and game is setup.</p>
         </div>
       </div>
     );
   }
-
-  const { 
-    teams = [], 
-    boxes = [], 
-    currentBox, 
-    gameStarted, 
-    timer, 
-    currentWordIndex,
-    correctWords = [],
-    skippedWords = [] 
-  } = gameState;
 
   // Get current team
   const currentTeam = teams.find(t => t.isPlaying);
@@ -1063,7 +1415,7 @@ function PlayerView() {
       {/* Connection Status */}
       {!isConnected && (
         <div className="connection-status">
-          ⚠️ Disconnected from Admin Panel
+          ⚠️ Disconnected from Game Server
         </div>
       )}
       
@@ -1074,7 +1426,7 @@ function PlayerView() {
           <div className="info-card">
             <div className="label">Your Team:</div>
             <div className="value" style={{ color: currentTeam?.color }}>
-              {currentTeam?.name}
+              {currentTeam?.name || 'No team playing'}
             </div>
           </div>
           <div className="info-card">
@@ -1099,7 +1451,6 @@ function PlayerView() {
         <div className="player-pyramid-section">
           <h3>📦 Pyramid Boxes</h3>
           <div className="player-pyramid">
-            {/* Pyramid rows remain the same */}
             {/* Row 1: Box 1 */}
             <div className="pyramid-row">
               <div 
@@ -1128,7 +1479,7 @@ function PlayerView() {
                     opacity: boxes[index]?.conqueredBy ? 0.7 : 1
                   }}
                 >
-                  <div className="box-number">{index + 1}</div>
+                  <div className="box-number">{boxes[index]?.id}</div>
                   <div className="box-category">{boxes[index]?.category}</div>
                   <div className="box-points">{boxes[index]?.points} pts</div>
                   {boxes[index]?.isCurrent && <div className="current-indicator">🎯 Playing</div>}
@@ -1148,7 +1499,7 @@ function PlayerView() {
                     opacity: boxes[index]?.conqueredBy ? 0.7 : 1
                   }}
                 >
-                  <div className="box-number">{index + 1}</div>
+                  <div className="box-number">{boxes[index]?.id}</div>
                   <div className="box-category">{boxes[index]?.category}</div>
                   <div className="box-points">{boxes[index]?.points} pts</div>
                   {boxes[index]?.isCurrent && <div className="current-indicator">🎯 Playing</div>}
