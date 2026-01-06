@@ -12,7 +12,7 @@ body {
   min-height: 100vh;
 }
 
-body::before{
+body::before {
   content: "";
   position: fixed;
   inset: 0;
@@ -25,6 +25,7 @@ body::before{
   z-index: -1;
 }
 
+/* App Container */
 .app {
   max-width: 1600px;
   margin: 0 auto;
@@ -47,42 +48,26 @@ body::before{
   text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
 }
 
-.view-toggle {
-  display: inline-flex;
-  background: rgba(255, 255, 255, 0.2);
-  padding: 8px;
-  border-radius: 50px;
-  backdrop-filter: blur(10px);
-}
-
-.view-btn {
-  padding: 14px 40px;
-  border: none;
-  background: none;
-  font-size: 1.1rem;
-  font-weight: 600;
-  border-radius: 40px;
-  cursor: pointer;
-  transition: all 0.3s;
-  color: white;
-}
-
-.view-btn.active {
-  background: white;
-  color: #667eea;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
-}
-
-.view-btn:hover:not(.active) {
-  background: rgba(255, 255, 255, 0.1);
-}
-
 /* Admin Panel */
 .admin-panel {
+  position: relative;
   background: white;
   border-radius: 20px;
   padding: 30px;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+}
+
+.admin-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: url('./images/image2.jpg');
+  background-size: cover;
+  background-repeat: no-repeat;
+  opacity: 0.05;
+  transition: opacity 1.5s ease-in-out;
+  z-index: 0;
+  border-radius: 20px;
 }
 
 .admin-grid {
@@ -91,38 +76,28 @@ body::before{
   gap: 30px;
 }
 
+/* Cards */
 .card {
-   position: relative; 
-  /* background: url('./images/image2.jpg');
-  background-size: cover;
-  background-repeat: no-repeat; */ 
+  position: relative;
   border-radius: 16px;
   padding: 24px;
   margin-bottom: 24px;
   border: 1px solid #eaeaea;
+  background: white;
+  z-index: 1;
 }
+
 .card::before {
   content: "";
-  position: absolute;   
-  inset: 0;            
+  position: absolute;
+  inset: 0;
   background-image: url('./images/image3.jpg');
   background-size: cover;
   background-repeat: no-repeat;
-  opacity: 0.01;        
+  opacity: 0.01;
   transition: opacity 1.5s ease-in-out;
-  z-index: 0.1; 
-}
-
-.admin-panel::before {
-  content: "";
-  position: absolute;   
-  inset: 0;            
-  background-image: url('./images/image2.jpg');
-  background-size: cover;
-  background-repeat: no-repeat;
-  opacity: 0.05;        
-  transition: opacity 1.5s ease-in-out;
-  z-index: 0;           /* behind card content */
+  z-index: -1;
+  border-radius: 16px;
 }
 
 .card h2 {
@@ -131,6 +106,8 @@ body::before{
   margin-bottom: 20px;
   padding-bottom: 12px;
   border-bottom: 3px solid #667eea;
+  position: relative;
+  z-index: 2;
 }
 
 /* Teams Management */
@@ -167,9 +144,14 @@ body::before{
   transition: all 0.3s;
 }
 
-.add-btn:hover {
+.add-btn:hover:not(:disabled) {
   transform: translateY(-2px);
   box-shadow: 0 6px 20px rgba(102, 126, 234, 0.3);
+}
+
+.add-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .teams-list {
@@ -221,6 +203,11 @@ body::before{
   font-weight: 600;
   color: #667eea;
   font-size: 1.1rem;
+  cursor: pointer;
+}
+
+.team-score:hover {
+  text-decoration: underline;
 }
 
 .team-actions {
@@ -290,7 +277,11 @@ body::before{
 }
 
 .quick-btn.reset {
-      background: linear-gradient(135deg, #f44336 0%, #C62828 100%);
+  background: linear-gradient(135deg, #f44336 0%, #C62828 100%);
+}
+
+.quick-btn.danger {
+  background: linear-gradient(135deg, #f44336 0%, #C62828 100%);
 }
 
 .quick-btn:hover {
@@ -423,7 +414,7 @@ body::before{
 }
 
 .pyramid-box {
-  width: 140px;
+  width: 160px;
   height: 140px;
   border-radius: 15px;
   display: flex;
@@ -467,13 +458,13 @@ body::before{
 }
 
 .box-number {
-  font-size: 2rem;
+  font-size: 1.2rem;
   font-weight: 800;
   margin-bottom: 8px;
 }
 
 .box-category {
-  font-size: 1rem;
+  font-size: 1.5rem;
   margin-bottom: 6px;
   line-height: 1.2;
 }
@@ -717,8 +708,8 @@ body::before{
 }
 
 .player-pyramid-box {
-  width: 120px;
-  height: 120px;
+  width: 180px;
+  height: 150px;
   border-radius: 12px;
   display: flex;
   flex-direction: column;
@@ -1063,68 +1054,6 @@ body::before{
   color: #667eea;
 }
 
-/* Responsive */
-@media (max-width: 1200px) {
-  .admin-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .player-content {
-    grid-template-columns: 1fr;
-  }
-  
-  .player-info {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  
-  .control-buttons {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
-@media (max-width: 768px) {
-  .header h1 {
-    font-size: 2rem;
-  }
-  
-  .view-toggle {
-    flex-direction: column;
-    width: 100%;
-  }
-  
-  .view-btn {
-    width: 100%;
-  }
-  
-  .player-info {
-    grid-template-columns: 1fr;
-  }
-  
-  .pyramid-box {
-    width: 100px;
-    height: 100px;
-  }
-  
-  .player-pyramid-box {
-    width: 90px;
-    height: 90px;
-  }
-  
-  .current-word {
-    font-size: 2.5rem;
-    padding: 20px;
-  }
-  
-  .flashcard-front {
-    font-size: 2.5rem;
-  }
-}
-
-/* Remove any view-toggle styles from the existing CSS */
-.view-toggle {
-  display: none;
-}
-
 /* Connection Status */
 .connection-status {
   position: fixed;
@@ -1236,13 +1165,6 @@ body::before{
   box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
 }
 
-/* Danger button for reset */
-.quick-btn.danger {
-  background: linear-gradient(135deg, #f44336 0%, #C62828 100%);
-}
-
-/* Add these to your existing App.css */
-
 /* Login Container */
 .login-container {
   display: flex;
@@ -1322,20 +1244,6 @@ body::before{
   margin: 15px 0;
   text-align: center;
   font-weight: 600;
-}
-
-.login-note {
-  margin-top: 30px;
-  padding: 15px;
-  background: #f5f5f5;
-  border-radius: 10px;
-  font-size: 0.9rem;
-  color: #666;
-  text-align: center;
-}
-
-.login-note p {
-  margin: 5px 0;
 }
 
 /* Loading Container */
@@ -1420,48 +1328,16 @@ body::before{
   font-size: 0.9rem;
 }
 
-/* Firebase Error */
-.firebase-error {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+.connection-error {
+  background: #ff9800;
   color: white;
-  text-align: center;
-  padding: 40px;
-}
-
-.firebase-error h3 {
-  font-size: 2rem;
-  margin-bottom: 20px;
-}
-
-.firebase-error p {
-  font-size: 1.2rem;
-  margin-bottom: 30px;
-  max-width: 500px;
-}
-
-.firebase-error button {
-  padding: 12px 30px;
-  background: white;
-  color: #667eea;
-  border: none;
-  border-radius: 10px;
-  font-size: 1.1rem;
+  padding: 8px 16px;
+  border-radius: 20px;
   font-weight: 600;
-  cursor: pointer;
-  transition: all 0.3s;
+  font-size: 0.9rem;
 }
 
-.firebase-error button:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
-}
-
-/* Add to App.css - Score editing styles */
+/* Score editing styles */
 .team-score-edit {
   display: flex;
   align-items: center;
@@ -1516,4 +1392,58 @@ body::before{
 .score-edit-buttons .cancel-btn:hover {
   background: #d32f2f;
   transform: scale(1.1);
+}
+
+/* Responsive */
+@media (max-width: 1200px) {
+  .admin-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .player-content {
+    grid-template-columns: 1fr;
+  }
+  
+  .player-info {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .control-buttons {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .header h1 {
+    font-size: 2rem;
+  }
+  
+  .player-info {
+    grid-template-columns: 1fr;
+  }
+  
+  .pyramid-box {
+    width: 100px;
+    height: 100px;
+  }
+  
+  .player-pyramid-box {
+    width: 90px;
+    height: 90px;
+  }
+  
+  .current-word {
+    font-size: 2.5rem;
+    padding: 20px;
+  }
+  
+  .flashcard-front {
+    font-size: 2.5rem;
+  }
+  
+  .admin-status {
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
 }

@@ -11,9 +11,9 @@ app.use(express.json());
 const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
-  }
+  origin: ["https://pyramid-game-one.vercel.app/", "http://localhost:3000",'*'],
+  methods: ["GET", "POST"]
+}
 });
 
 // Default game state

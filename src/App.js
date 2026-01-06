@@ -1,33 +1,88 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+// App.js - Complete Socket.io Version with Your CSS
+import React, { useState, useEffect, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import io from 'socket.io-client';
 import './App.css';
 
-// Firebase imports
-import { initializeApp } from 'firebase/app';
-import { 
-  getFirestore, 
-  doc, 
-  setDoc, 
-  onSnapshot, 
-  updateDoc,
-  collection,
-  getDocs,
-  query
-} from 'firebase/firestore';
+// Socket.io connection URL - Change this to your Railway backend URL
+const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || 'http://localhost:3001';
 
-// Initialize Firebase
-const firebaseConfig = {
-  apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
-  authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.REACT_APP_FIREBASE_APP_ID
-};
+// Default game data
+const defaultTeams = [
+  { id: 1, name: 'Team Red', score: 0, color: '#FF6B6B', isPlaying: true },
+  { id: 2, name: 'Team Blue', score: 0, color: '#4D96FF', isPlaying: false }
+];
 
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
+const defaultBoxes = [
+  {
+    id: 1,
+    category: 'Movies',
+    words: ['Titanic', 'Avatar', 'Star Wars', 'Harry Potter', 'Inception', 'The Matrix', 'Frozen'],
+    color: '#FF6B6B',
+    isCurrent: false,
+    conqueredBy: null,
+    points: 100
+  },
+  {
+    id: 2,
+    category: 'Animals',
+    words: ['Lion', 'Elephant', 'Dolphin', 'Eagle', 'Penguin', 'Giraffe', 'Kangaroo'],
+    color: '#4ECDC4',
+    isCurrent: false,
+    conqueredBy: null,
+    points: 200
+  },
+  {
+    id: 3,
+    category: 'Countries',
+    words: ['France', 'Japan', 'Brazil', 'Australia', 'Egypt', 'Canada', 'India'],
+    color: '#45B7D1',
+    isCurrent: false,
+    conqueredBy: null,
+    points: 300
+  },
+  {
+    id: 4,
+    category: 'Fruits',
+    words: ['Apple', 'Banana', 'Orange', 'Grape', 'Strawberry', 'Watermelon', 'Pineapple'],
+    color: '#96CEB4',
+    isCurrent: false,
+    conqueredBy: null,
+    points: 100
+  },
+  {
+    id: 5,
+    category: 'Sports',
+    words: ['Soccer', 'Basketball', 'Tennis', 'Swimming', 'Golf', 'Baseball', 'Volleyball'],
+    color: '#FFEAA7',
+    isCurrent: false,
+    conqueredBy: null,
+    points: 200
+  },
+  {
+    id: 6,
+    category: 'Instruments',
+    words: ['Guitar', 'Piano', 'Violin', 'Drums', 'Flute', 'Trumpet', 'Saxophone'],
+    color: '#DDA0DD',
+    isCurrent: false,
+    conqueredBy: null,
+    points: 300
+  },
+  {
+    id: 7,
+    category: 'Science',
+    words: ['Physics', 'Chemistry', 'Biology', 'Astronomy', 'Geology', 'Mathematics', 'Computer'],
+    color: '#98D8C8',
+    isCurrent: false,
+    conqueredBy: null,
+    points: 500
+  }
+];
 
+// Helper function
+const roundToTwo = (num) => Math.round((num + Number.EPSILON) * 100) / 100;
+
+// Main App Component
 function App() {
   return (
     <Router>
@@ -90,21 +145,64 @@ function Login() {
           {error && <div className="error-message">{error}</div>}
           <button type="submit" className="login-btn">Login</button>
         </form>
-        
       </div>
     </div>
   );
 }
 
-// Helper function to round to 2 decimal places
-const roundToTwo = (num) => {
-  return Math.round((num + Number.EPSILON) * 100) / 100;
+// Socket.io Hook
+const useSocket = () => {
+  const [socket, setSocket] = useState(null);
+  const [isConnected, setIsConnected] = useState(false);
+  const [connectionError, setConnectionError] = useState('');
+
+  useEffect(() => {
+    const newSocket = io(SOCKET_URL, {
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000
+    });
+
+    newSocket.on('connect', () => {
+      console.log('✅ Connected to server:', newSocket.id);
+      setIsConnected(true);
+      setConnectionError('');
+    });
+
+    newSocket.on('disconnect', () => {
+      console.log('❌ Disconnected from server');
+      setIsConnected(false);
+    });
+
+    newSocket.on('connect_error', (error) => {
+      console.error('Connection error:', error);
+      setIsConnected(false);
+      setConnectionError('Failed to connect to game server');
+    });
+
+    newSocket.on('reconnect', () => {
+      console.log('🔄 Reconnected to server');
+      setIsConnected(true);
+      setConnectionError('');
+    });
+
+    setSocket(newSocket);
+
+    return () => {
+      if (newSocket) {
+        newSocket.disconnect();
+      }
+    };
+  }, []);
+
+  return { socket, isConnected, connectionError };
 };
 
-// Admin Panel Component with Firebase Integration
+// Admin Panel Component
 function AdminPanel() {
-  const [teams, setTeams] = useState([]);
-  const [boxes, setBoxes] = useState([]);
+  const [teams, setTeams] = useState(defaultTeams);
+  const [boxes, setBoxes] = useState(defaultBoxes);
   const [currentBox, setCurrentBox] = useState(null);
   const [currentWordIndex, setCurrentWordIndex] = useState(0);
   const [gameStarted, setGameStarted] = useState(false);
@@ -117,14 +215,15 @@ function AdminPanel() {
   const [newCategoryName, setNewCategoryName] = useState('');
   const [selectedBoxForWords, setSelectedBoxForWords] = useState(0);
   const [editingCategory, setEditingCategory] = useState(null);
-  const [isConnected, setIsConnected] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
   const [editingTeamScore, setEditingTeamScore] = useState(null);
   const [tempTeamScore, setTempTeamScore] = useState('');
   const timerIntervalRef = useRef(null);
+  
+  const { socket, isConnected, connectionError } = useSocket();
 
-  // Check authentication on component mount
+  // Check authentication
   useEffect(() => {
     const checkAuth = () => {
       const isLoggedIn = localStorage.getItem('isAdminLoggedIn');
@@ -145,203 +244,71 @@ function AdminPanel() {
     checkAuth();
   }, []);
 
-  const handleLogout = () => {
-    localStorage.removeItem('isAdminLoggedIn');
-    localStorage.removeItem('adminLoginTime');
-    window.location.href = '/login';
-  };
-
-  // Initialize default data
-  const defaultTeams = [
-    { id: 1, name: 'Team Red', score: 0, color: '#FF6B6B', isPlaying: true },
-    { id: 2, name: 'Team Blue', score: 0, color: '#4D96FF', isPlaying: false }
-
-  ];
-
-  const defaultBoxes = [
-    {
-      id: 1,
-      category: 'Movies',
-      words: ['Titanic', 'Avatar', 'Star Wars', 'Harry Potter', 'Inception', 'The Matrix', 'Frozen'],
-      color: '#FF6B6B',
-      isCurrent: false,
-      conqueredBy: null,
-      points: 100
-    },
-    {
-      id: 2,
-      category: 'Animals',
-      words: ['Lion', 'Elephant', 'Dolphin', 'Eagle', 'Penguin', 'Giraffe', 'Kangaroo'],
-      color: '#4ECDC4',
-      isCurrent: false,
-      conqueredBy: null,
-      points: 200
-    },
-    {
-      id: 3,
-      category: 'Countries',
-      words: ['France', 'Japan', 'Brazil', 'Australia', 'Egypt', 'Canada', 'India'],
-      color: '#45B7D1',
-      isCurrent: false,
-      conqueredBy: null,
-      points: 300
-    },
-    {
-      id: 4,
-      category: 'Fruits',
-      words: ['Apple', 'Banana', 'Orange', 'Grape', 'Strawberry', 'Watermelon', 'Pineapple'],
-      color: '#96CEB4',
-      isCurrent: false,
-      conqueredBy: null,
-      points: 100
-    },
-    {
-      id: 5,
-      category: 'Sports',
-      words: ['Soccer', 'Basketball', 'Tennis', 'Swimming', 'Golf', 'Baseball', 'Volleyball'],
-      color: '#FFEAA7',
-      isCurrent: false,
-      conqueredBy: null,
-      points: 200
-    },
-    {
-      id: 6,
-      category: 'Instruments',
-      words: ['Guitar', 'Piano', 'Violin', 'Drums', 'Flute', 'Trumpet', 'Saxophone'],
-      color: '#DDA0DD',
-      isCurrent: false,
-      conqueredBy: null,
-      points: 300
-    },
-    {
-      id: 7,
-      category: 'Science',
-      words: ['Physics', 'Chemistry', 'Biology', 'Astronomy', 'Geology', 'Mathematics', 'Computer'],
-      color: '#98D8C8',
-      isCurrent: false,
-      conqueredBy: null,
-      points: 500
-    }
-  ];
-
-  // Load initial data from Firebase
+  // Register as admin when socket connects
   useEffect(() => {
-    let unsubscribeTeams, unsubscribeBoxes, unsubscribeState;
+    if (socket && isConnected) {
+      socket.emit('register-client', { type: 'admin' });
+    }
+  }, [socket, isConnected]);
 
-    const loadInitialData = async () => {
-      try {
-        // Load teams
-        const teamsDoc = doc(db, 'game', 'teams');
-        unsubscribeTeams = onSnapshot(teamsDoc, (doc) => {
-          if (doc.exists()) {
-            const data = doc.data();
-            setTeams(data.teams || defaultTeams);
-          } else {
-            // Initialize with default teams
-            setDoc(teamsDoc, { teams: defaultTeams });
-            setTeams(defaultTeams);
-          }
-          setIsConnected(true);
-        }, (error) => {
-          console.error('Teams listener error:', error);
-          setIsConnected(false);
-        });
+  // Listen for game state updates
+  useEffect(() => {
+    if (!socket) return;
 
-        // Load boxes
-        const boxesDoc = doc(db, 'game', 'boxes');
-        unsubscribeBoxes = onSnapshot(boxesDoc, (doc) => {
-          if (doc.exists()) {
-            const data = doc.data();
-            setBoxes(data.boxes || defaultBoxes);
-          } else {
-            // Initialize with default boxes
-            setDoc(boxesDoc, { boxes: defaultBoxes });
-            setBoxes(defaultBoxes);
-          }
-          setIsConnected(true);
-        }, (error) => {
-          console.error('Boxes listener error:', error);
-          setIsConnected(false);
-        });
-
-        // Load game state
-        const gameStateDoc = doc(db, 'game', 'state');
-        unsubscribeState = onSnapshot(gameStateDoc, (doc) => {
-          if (doc.exists()) {
-            const data = doc.data();
-            setCurrentBox(data.currentBox || null);
-            setCurrentWordIndex(data.currentWordIndex || 0);
-            setGameStarted(data.gameStarted || false);
-            setTimer(data.timer || 30);
-            setIsTimerRunning(data.isTimerRunning || false);
-            setCorrectWords(data.correctWords || []);
-            setSkippedWords(data.skippedWords || []);
-          } else {
-            // Initialize with default state
-            const defaultState = {
-              currentBox: null,
-              currentWordIndex: 0,
-              gameStarted: false,
-              timer: 30,
-              isTimerRunning: false,
-              correctWords: [],
-              skippedWords: []
-            };
-            setDoc(gameStateDoc, defaultState);
-          }
-          setIsConnected(true);
-        }, (error) => {
-          console.error('State listener error:', error);
-          setIsConnected(false);
-        });
-
-      } catch (error) {
-        console.error('Error loading data:', error);
-        setIsConnected(false);
-      }
+    const handleGameState = (state) => {
+      setTeams(state.teams || defaultTeams);
+      setBoxes(state.boxes || defaultBoxes);
+      setCurrentBox(state.currentBox || null);
+      setCurrentWordIndex(state.currentWordIndex || 0);
+      setGameStarted(state.gameStarted || false);
+      setTimer(state.timer || 30);
+      setIsTimerRunning(state.isTimerRunning || false);
+      setCorrectWords(state.correctWords || []);
+      setSkippedWords(state.skippedWords || []);
     };
 
-    if (isAuthenticated) {
-      loadInitialData();
-    }
+    const handleTimerUpdate = (newTimer) => {
+      setTimer(newTimer);
+    };
+
+    const handleWordCorrect = (data) => {
+      setCorrectWords(data.correctWords || []);
+    };
+
+    const handleWordSkipped = (data) => {
+      setSkippedWords(data.skippedWords || []);
+    };
+
+    socket.on('game-state', handleGameState);
+    socket.on('timer-update', handleTimerUpdate);
+    socket.on('word-correct', handleWordCorrect);
+    socket.on('word-skipped', handleWordSkipped);
 
     return () => {
-      if (unsubscribeTeams) unsubscribeTeams();
-      if (unsubscribeBoxes) unsubscribeBoxes();
-      if (unsubscribeState) unsubscribeState();
+      socket.off('game-state', handleGameState);
+      socket.off('timer-update', handleTimerUpdate);
+      socket.off('word-correct', handleWordCorrect);
+      socket.off('word-skipped', handleWordSkipped);
     };
-  }, [isAuthenticated]);
+  }, [socket]);
 
-  // Timer effect - UPDATED for better synchronization
+  // Timer effect
   useEffect(() => {
-    // Clear any existing interval
     if (timerIntervalRef.current) {
       clearInterval(timerIntervalRef.current);
-      timerIntervalRef.current = null;
     }
 
-    // Start new interval if timer is running
     if (isTimerRunning && timer > 0) {
-      timerIntervalRef.current = setInterval(async () => {
-        const newTimer = timer - 1;
-        setTimer(newTimer);
-        
-        // Update timer in Firebase
-        const gameStateDoc = doc(db, 'game', 'state');
-        await updateDoc(gameStateDoc, { timer: newTimer });
-        
-        if (newTimer <= 0) {
-          clearInterval(timerIntervalRef.current);
-          setIsTimerRunning(false);
-          setGameStarted(false);
-          
-          // Update game state in Firebase
-          await updateDoc(gameStateDoc, {
-            isTimerRunning: false,
-            gameStarted: false,
-            timer: 0
-          });
-        }
+      timerIntervalRef.current = setInterval(() => {
+        setTimer(prevTimer => {
+          const newTimer = prevTimer - 1;
+          if (newTimer <= 0) {
+            clearInterval(timerIntervalRef.current);
+            setIsTimerRunning(false);
+            setGameStarted(false);
+          }
+          return newTimer;
+        });
       }, 1000);
     }
     
@@ -352,175 +319,84 @@ function AdminPanel() {
     };
   }, [isTimerRunning, timer]);
 
-  // Helper function to get current box object
-  const getCurrentBox = () => {
-    return boxes.find(b => b.id === currentBox);
+  const handleLogout = () => {
+    localStorage.removeItem('isAdminLoggedIn');
+    localStorage.removeItem('adminLoginTime');
+    window.location.href = '/login';
   };
 
-  // Update Firebase document
-  const updateFirebaseDoc = async (collectionName, data) => {
-    try {
-      const docRef = doc(db, 'game', collectionName);
-      await updateDoc(docRef, data);
-      setIsConnected(true);
-      return true;
-    } catch (error) {
-      console.error(`Error updating ${collectionName}:`, error);
-      setIsConnected(false);
-      return false;
+  // Helper functions
+  const getCurrentBox = () => boxes.find(b => b.id === currentBox);
+  const currentTeam = teams.find(t => t.isPlaying);
+
+  // Game control functions
+  const startBox = (boxId) => {
+    if (socket && isConnected) {
+      socket.emit('start-box', boxId);
+    } else {
+      alert('Not connected to server');
     }
   };
 
-  // Start a box
-  const startBox = async (boxId) => {
-    const box = boxes.find(b => b.id === boxId);
-    if (!box || box.conqueredBy) return;
-    
-    // Reset current boxes
-    const updatedBoxes = boxes.map(b => ({
-      ...b,
-      isCurrent: b.id === boxId
-    }));
-    
-    // Update boxes in Firebase
-    await updateFirebaseDoc('boxes', { boxes: updatedBoxes });
-    
-    // Update game state in Firebase
-    await updateFirebaseDoc('state', {
-      currentBox: box.id,
-      currentWordIndex: 0,
-      gameStarted: false,
-      timer: 30,
-      isTimerRunning: false,
-      correctWords: [],
-      skippedWords: []
-    });
+  const startGame = () => {
+    if (socket && isConnected) {
+      if (!currentBox) {
+        alert('Please select a box first!');
+        return;
+      }
+      socket.emit('start-game');
+    } else {
+      alert('Not connected to server');
+    }
   };
 
-  // Start the game
-  const startGame = async () => {
-    if (currentBox === null) {
-      alert('Please select a box first!');
+  const markCorrect = () => {
+    if (socket && isConnected) {
+      socket.emit('mark-correct');
+    }
+  };
+
+  const skipWord = () => {
+    if (socket && isConnected) {
+      socket.emit('skip-word');
+    }
+  };
+
+  const nextWord = () => {
+    if (socket && isConnected) {
+      socket.emit('next-word');
+    }
+  };
+
+  const conquerBox = () => {
+    if (socket && isConnected) {
+      socket.emit('conquer-box');
+    }
+  };
+
+  const endRound = () => {
+    if (socket && isConnected) {
+      socket.emit('end-round');
+    }
+  };
+
+  const switchToNextTeam = () => {
+    if (socket && isConnected) {
+      socket.emit('switch-team');
+    }
+  };
+
+  const switchToTeam = (teamId) => {
+    if (socket && isConnected) {
+      socket.emit('switch-team', teamId);
+    }
+  };
+
+  const addTeam = () => {
+    if (!newTeamName.trim() || teams.length >= 4) {
+      alert('Maximum 4 teams allowed');
       return;
     }
-
-    // Clear any existing timer
-    if (timerIntervalRef.current) {
-      clearInterval(timerIntervalRef.current);
-    }
-
-    await updateFirebaseDoc('state', {
-      gameStarted: true,
-      isTimerRunning: true,
-      timer: 30,
-      currentWordIndex: 0,
-      correctWords: [],
-      skippedWords: []
-    });
-  };
-
-  // Mark word as correct
-  const markCorrect = async () => {
-    if (!gameStarted || currentBox === null) return;
-    
-    const currentBoxObj = getCurrentBox();
-    if (!currentBoxObj) return;
-    
-    const currentWord = currentBoxObj.words[currentWordIndex];
-    const newCorrectWords = [...correctWords, currentWord];
-    
-    // Update correct words in Firebase
-    await updateFirebaseDoc('state', { correctWords: newCorrectWords });
-    
-    // Update team score with rounded value
-    const currentTeam = teams.find(t => t.isPlaying);
-    if (currentTeam && currentBoxObj.words.length > 0) {
-      const pointsPerWord = currentBoxObj.points / currentBoxObj.words.length;
-      const roundedPoints = roundToTwo(pointsPerWord);
-      
-      const updatedTeams = teams.map(team => 
-        team.id === currentTeam.id 
-          ? { ...team, score: roundToTwo(team.score + roundedPoints) }
-          : team
-      );
-      
-      // Update teams in Firebase
-      await updateFirebaseDoc('teams', { teams: updatedTeams });
-    }
-    
-    await nextWord();
-  };
-
-  // Skip word
-  const skipWord = async () => {
-    if (!gameStarted || currentBox === null) return;
-    
-    const currentBoxObj = getCurrentBox();
-    if (!currentBoxObj) return;
-    
-    const currentWord = currentBoxObj.words[currentWordIndex];
-    const newSkippedWords = [...skippedWords, currentWord];
-    
-    // Update skipped words in Firebase
-    await updateFirebaseDoc('state', { skippedWords: newSkippedWords });
-    
-    await nextWord();
-  };
-
-  // Next word
-  const nextWord = async () => {
-    if (currentBox === null) return;
-    
-    const currentBoxObj = getCurrentBox();
-    if (!currentBoxObj) return;
-    
-    if (currentWordIndex < currentBoxObj.words.length - 1) {
-      const newIndex = currentWordIndex + 1;
-      await updateFirebaseDoc('state', { currentWordIndex: newIndex });
-    } else {
-      await endRound();
-    }
-  };
-
-  // End round
-  const endRound = async () => {
-    if (timerIntervalRef.current) {
-      clearInterval(timerIntervalRef.current);
-      timerIntervalRef.current = null;
-    }
-    
-    await updateFirebaseDoc('state', {
-      isTimerRunning: false,
-      gameStarted: false
-    });
-  };
-
-  // Switch to next team
-  const switchToNextTeam = async () => {
-    const currentIndex = teams.findIndex(t => t.isPlaying);
-    const nextIndex = (currentIndex + 1) % teams.length;
-    
-    const updatedTeams = teams.map((team, index) => ({
-      ...team,
-      isPlaying: index === nextIndex
-    }));
-    
-    await updateFirebaseDoc('teams', { teams: updatedTeams });
-  };
-
-  // Switch to specific team
-  const switchToTeam = async (teamId) => {
-    const updatedTeams = teams.map(team => ({
-      ...team,
-      isPlaying: team.id === teamId
-    }));
-    
-    await updateFirebaseDoc('teams', { teams: updatedTeams });
-  };
-
-  // Add team
-  const addTeam = async () => {
-    if (!newTeamName.trim() || teams.length >= 4) return;
     
     const colors = ['#FF6B6B', '#4D96FF', '#4CAF50', '#FFD700'];
     const newTeam = {
@@ -532,33 +408,39 @@ function AdminPanel() {
     };
     
     const updatedTeams = [...teams, newTeam];
-    await updateFirebaseDoc('teams', { teams: updatedTeams });
+    setTeams(updatedTeams);
+    if (socket && isConnected) {
+      socket.emit('update-teams', updatedTeams);
+    }
     setNewTeamName('');
   };
 
-  // Remove team
-  const removeTeam = async (teamId) => {
-    if (teams.length <= 2) return;
+  const removeTeam = (teamId) => {
+    if (teams.length <= 2) {
+      alert('Minimum 2 teams required');
+      return;
+    }
+    
     const teamToRemove = teams.find(t => t.id === teamId);
     const wasPlaying = teamToRemove?.isPlaying;
-    const newTeams = teams.filter(team => team.id !== teamId);
+    let newTeams = teams.filter(team => team.id !== teamId);
     
-    // If we removed the current team, make the first team current
     if (wasPlaying && newTeams.length > 0) {
       newTeams[0].isPlaying = true;
     }
     
-    await updateFirebaseDoc('teams', { teams: newTeams });
+    setTeams(newTeams);
+    if (socket && isConnected) {
+      socket.emit('update-teams', newTeams);
+    }
   };
 
-  // Edit team score
   const startEditTeamScore = (teamId, currentScore) => {
     setEditingTeamScore(teamId);
     setTempTeamScore(currentScore.toString());
   };
 
-  // Save team score
-  const saveTeamScore = async (teamId) => {
+  const saveTeamScore = (teamId) => {
     const score = parseFloat(tempTeamScore);
     if (isNaN(score)) {
       alert('Please enter a valid number');
@@ -571,29 +453,31 @@ function AdminPanel() {
         : team
     );
 
-    await updateFirebaseDoc('teams', { teams: updatedTeams });
+    setTeams(updatedTeams);
+    if (socket && isConnected) {
+      socket.emit('update-teams', updatedTeams);
+    }
     setEditingTeamScore(null);
     setTempTeamScore('');
   };
 
-  // Cancel editing score
   const cancelEditTeamScore = () => {
     setEditingTeamScore(null);
     setTempTeamScore('');
   };
 
-  // Edit box category name
   const editBoxCategory = (boxId) => {
     const box = boxes.find(b => b.id === boxId);
     if (!box) return;
-    
     setEditingCategory(boxId);
     setNewCategoryName(box.category);
   };
 
-  // Save box category name
-  const saveBoxCategory = async (boxId) => {
-    if (!newCategoryName.trim()) return;
+  const saveBoxCategory = (boxId) => {
+    if (!newCategoryName.trim()) {
+      alert('Category name cannot be empty');
+      return;
+    }
     
     const updatedBoxes = boxes.map(box => 
       box.id === boxId 
@@ -601,115 +485,74 @@ function AdminPanel() {
         : box
     );
     
-    await updateFirebaseDoc('boxes', { boxes: updatedBoxes });
+    setBoxes(updatedBoxes);
+    if (socket && isConnected) {
+      socket.emit('update-boxes', updatedBoxes);
+    }
     setEditingCategory(null);
     setNewCategoryName('');
   };
 
-  // Cancel editing category
   const cancelEditCategory = () => {
     setEditingCategory(null);
     setNewCategoryName('');
   };
 
-  // Add word to box
-  const addWordToBox = async (boxIndex) => {
-    if (!newWord.trim()) return;
+  const addWordToBox = (boxIndex) => {
+    if (!newWord.trim()) {
+      alert('Please enter a word');
+      return;
+    }
     
     const updatedBoxes = [...boxes];
-    updatedBoxes[boxIndex].words.push(newWord.trim());
-    await updateFirebaseDoc('boxes', { boxes: updatedBoxes });
-    setNewWord('');
-  };
-
-  // Remove word from box
-  const removeWordFromBox = async (boxIndex, wordIndex) => {
-    const updatedBoxes = [...boxes];
-    updatedBoxes[boxIndex].words.splice(wordIndex, 1);
-    await updateFirebaseDoc('boxes', { boxes: updatedBoxes });
-  };
-
-  // Conquer box for current team
-  const conquerBox = async () => {
-    const currentTeam = teams.find(t => t.isPlaying);
-    if (!currentTeam || currentBox === null) return;
-    
-    const currentBoxIndex = boxes.findIndex(b => b.id === currentBox);
-    if (currentBoxIndex === -1) return;
-    
-    const updatedBoxes = [...boxes];
-    updatedBoxes[currentBoxIndex].conqueredBy = currentTeam.name;
-    updatedBoxes[currentBoxIndex].isCurrent = false;
-    
-    // Award box points (rounded)
-    const updatedTeams = teams.map(team => 
-      team.id === currentTeam.id 
-        ? { ...team, score: roundToTwo(team.score + boxes[currentBoxIndex].points) }
-        : team
-    );
-    
-    await updateFirebaseDoc('boxes', { boxes: updatedBoxes });
-    await updateFirebaseDoc('teams', { teams: updatedTeams });
-    
-    await updateFirebaseDoc('state', {
-      currentBox: null,
-      gameStarted: false,
-      isTimerRunning: false,
-      timer: 30
-    });
-    
-    if (timerIntervalRef.current) {
-      clearInterval(timerIntervalRef.current);
-      timerIntervalRef.current = null;
+    if (updatedBoxes[boxIndex]) {
+      updatedBoxes[boxIndex].words.push(newWord.trim());
+      setBoxes(updatedBoxes);
+      if (socket && isConnected) {
+        socket.emit('update-boxes', updatedBoxes);
+      }
+      setNewWord('');
     }
   };
 
-  // Reset box
-  const resetBox = async (boxIndex) => {
+  const removeWordFromBox = (boxIndex, wordIndex) => {
     const updatedBoxes = [...boxes];
-    updatedBoxes[boxIndex].conqueredBy = null;
-    updatedBoxes[boxIndex].isCurrent = false;
-    await updateFirebaseDoc('boxes', { boxes: updatedBoxes });
-  };
-
-  // Reset entire game
-  const resetGame = async () => {
-    if (window.confirm('Are you sure you want to reset the entire game? This will clear all scores and conquered boxes.')) {
-      const resetTeams = [
-        { id: 1, name: 'Team Red', score: 0, color: '#FF6B6B', isPlaying: true },
-        { id: 2, name: 'Team Blue', score: 0, color: '#4D96FF', isPlaying: false }
-  
-      ];
-      
-      const resetBoxes = boxes.map(box => ({
-        ...box,
-        isCurrent: false,
-        conqueredBy: null
-      }));
-      
-      const resetState = {
-        currentBox: null,
-        currentWordIndex: 0,
-        gameStarted: false,
-        isTimerRunning: false,
-        timer: 30,
-        correctWords: [],
-        skippedWords: []
-      };
-      
-      await updateFirebaseDoc('teams', { teams: resetTeams });
-      await updateFirebaseDoc('boxes', { boxes: resetBoxes });
-      await updateFirebaseDoc('state', resetState);
-      
-      if (timerIntervalRef.current) {
-        clearInterval(timerIntervalRef.current);
-        timerIntervalRef.current = null;
+    if (updatedBoxes[boxIndex] && updatedBoxes[boxIndex].words[wordIndex]) {
+      updatedBoxes[boxIndex].words.splice(wordIndex, 1);
+      setBoxes(updatedBoxes);
+      if (socket && isConnected) {
+        socket.emit('update-boxes', updatedBoxes);
       }
     }
   };
 
-  // Get current team
-  const currentTeam = teams.find(t => t.isPlaying);
+  const resetBox = (boxIndex) => {
+    const updatedBoxes = [...boxes];
+    if (updatedBoxes[boxIndex]) {
+      updatedBoxes[boxIndex].conqueredBy = null;
+      updatedBoxes[boxIndex].isCurrent = false;
+      setBoxes(updatedBoxes);
+      if (socket && isConnected) {
+        socket.emit('update-boxes', updatedBoxes);
+      }
+    }
+  };
+
+  const resetGame = () => {
+    if (window.confirm('Are you sure you want to reset the entire game? This will clear all scores and conquered boxes.')) {
+      if (socket && isConnected) {
+        socket.emit('reset-game');
+      }
+    }
+  };
+
+  const resetAllScores = () => {
+    const updatedTeams = teams.map(t => ({ ...t, score: 0 }));
+    setTeams(updatedTeams);
+    if (socket && isConnected) {
+      socket.emit('update-teams', updatedTeams);
+    }
+  };
 
   if (loading) {
     return (
@@ -737,6 +580,7 @@ function AdminPanel() {
             <span className={`status-indicator ${isConnected ? 'connected' : 'disconnected'}`}>
               {isConnected ? '🟢 Connected' : '🔴 Disconnected'}
             </span>
+            {connectionError && <span className="connection-error">{connectionError}</span>}
             <span className="player-count">👥 Teams: {teams.length}</span>
           </div>
         </div>
@@ -858,10 +702,7 @@ function AdminPanel() {
                    Switch to Next Team
                 </button>
                 <button 
-                  onClick={async () => {
-                    const updatedTeams = teams.map(t => ({ ...t, score: 0 }));
-                    await updateFirebaseDoc('teams', { teams: updatedTeams });
-                  }}
+                  onClick={resetAllScores}
                   className="quick-btn reset"
                 >
                   Reset All Scores
@@ -909,34 +750,35 @@ function AdminPanel() {
                 <div className="control-buttons">
                   <button 
                     onClick={startGame}
-                    disabled={gameStarted || currentBox === null}
+                    disabled={gameStarted || currentBox === null || !isConnected}
                     className="control-btn start-btn"
                   >
                     ▶ Start Round
                   </button>
                   <button 
                     onClick={markCorrect}
-                    disabled={!gameStarted}
+                    disabled={!gameStarted || !isConnected}
                     className="control-btn correct-btn"
                   >
                     ✓ Correct Guess
                   </button>
                   <button 
                     onClick={skipWord}
-                    disabled={!gameStarted}
+                    disabled={!gameStarted || !isConnected}
                     className="control-btn skip-btn"
                   >
                     ⏭ Skip Word
                   </button>
                   <button 
                     onClick={conquerBox}
-                    disabled={!gameStarted || getCurrentBox()?.conqueredBy}
+                    disabled={!gameStarted || getCurrentBox()?.conqueredBy || !isConnected}
                     className="control-btn conquer-btn"
                   >
                     🏆 Conquer Box
                   </button>
                   <button 
                     onClick={endRound}
+                    disabled={!isConnected}
                     className="control-btn end-btn"
                   >
                     ⏹ End Round
@@ -1324,10 +1166,10 @@ function AdminPanel() {
   );
 }
 
-// Player View Component with Firebase Integration
+// Player View Component
 function PlayerView() {
-  const [teams, setTeams] = useState([]);
-  const [boxes, setBoxes] = useState([]);
+  const [teams, setTeams] = useState(defaultTeams);
+  const [boxes, setBoxes] = useState(defaultBoxes);
   const [currentBox, setCurrentBox] = useState(null);
   const [currentWordIndex, setCurrentWordIndex] = useState(0);
   const [gameStarted, setGameStarted] = useState(false);
@@ -1335,91 +1177,71 @@ function PlayerView() {
   const [correctWords, setCorrectWords] = useState([]);
   const [skippedWords, setSkippedWords] = useState([]);
   const [wordDisplayStyle, setWordDisplayStyle] = useState('one-by-one');
-  const [isConnected, setIsConnected] = useState(true);
+  const [isConnected, setIsConnected] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // Listen to Firebase updates - COMPLETELY SYNCHRONIZED WITH ADMIN
+  const { socket } = useSocket();
+
+  // Register as player when socket connects
   useEffect(() => {
-    let unsubscribeTeams, unsubscribeBoxes, unsubscribeState;
+    if (socket) {
+      socket.emit('register-client', { type: 'player' });
+    }
+  }, [socket]);
 
-    const setupFirebaseListeners = () => {
-      try {
-        // Listen to teams - SAME AS ADMIN
-        const teamsDoc = doc(db, 'game', 'teams');
-        unsubscribeTeams = onSnapshot(teamsDoc, (doc) => {
-          if (doc.exists()) {
-            const data = doc.data();
-            setTeams(data.teams || []);
-            setIsConnected(true);
-          } else {
-            setTeams([]);
-          }
-        }, (error) => {
-          console.error('Teams listener error:', error);
-          setIsConnected(false);
-        });
+  // Listen for game state updates
+  useEffect(() => {
+    if (!socket) return;
 
-        // Listen to boxes - SAME AS ADMIN
-        const boxesDoc = doc(db, 'game', 'boxes');
-        unsubscribeBoxes = onSnapshot(boxesDoc, (doc) => {
-          if (doc.exists()) {
-            const data = doc.data();
-            setBoxes(data.boxes || []);
-            setIsConnected(true);
-          } else {
-            setBoxes([]);
-          }
-        }, (error) => {
-          console.error('Boxes listener error:', error);
-          setIsConnected(false);
-        });
-
-        // Listen to game state - SAME AS ADMIN
-        const gameStateDoc = doc(db, 'game', 'state');
-        unsubscribeState = onSnapshot(gameStateDoc, (doc) => {
-          if (doc.exists()) {
-            const data = doc.data();
-            setCurrentBox(data.currentBox || null);
-            setCurrentWordIndex(data.currentWordIndex || 0);
-            setGameStarted(data.gameStarted || false);
-            setTimer(data.timer || 30);
-            setCorrectWords(data.correctWords || []);
-            setSkippedWords(data.skippedWords || []);
-            setIsConnected(true);
-            setLoading(false);
-          } else {
-            // Initialize with default state if not exists
-            const defaultState = {
-              currentBox: null,
-              currentWordIndex: 0,
-              gameStarted: false,
-              timer: 30,
-              isTimerRunning: false,
-              correctWords: [],
-              skippedWords: []
-            };
-            setDoc(gameStateDoc, defaultState);
-          }
-        }, (error) => {
-          console.error('State listener error:', error);
-          setIsConnected(false);
-        });
-
-      } catch (error) {
-        console.error('Error setting up Firebase listeners:', error);
-        setIsConnected(false);
-        setLoading(false);
-      }
+    const handleGameState = (state) => {
+      setTeams(state.teams || defaultTeams);
+      setBoxes(state.boxes || defaultBoxes);
+      setCurrentBox(state.currentBox || null);
+      setCurrentWordIndex(state.currentWordIndex || 0);
+      setGameStarted(state.gameStarted || false);
+      setTimer(state.timer || 30);
+      setCorrectWords(state.correctWords || []);
+      setSkippedWords(state.skippedWords || []);
+      setIsConnected(true);
+      setLoading(false);
     };
 
-    setupFirebaseListeners();
+    const handleTimerUpdate = (newTimer) => {
+      setTimer(newTimer);
+    };
+
+    const handleWordCorrect = (data) => {
+      setCorrectWords(data.correctWords || []);
+    };
+
+    const handleWordSkipped = (data) => {
+      setSkippedWords(data.skippedWords || []);
+    };
+
+    const handleConnect = () => {
+      setIsConnected(true);
+    };
+
+    const handleDisconnect = () => {
+      setIsConnected(false);
+    };
+
+    socket.on('game-state', handleGameState);
+    socket.on('timer-update', handleTimerUpdate);
+    socket.on('word-correct', handleWordCorrect);
+    socket.on('word-skipped', handleWordSkipped);
+    socket.on('connect', handleConnect);
+    socket.on('disconnect', handleDisconnect);
 
     return () => {
-      if (unsubscribeTeams) unsubscribeTeams();
-      if (unsubscribeBoxes) unsubscribeBoxes();
-      if (unsubscribeState) unsubscribeState();
+      socket.off('game-state', handleGameState);
+      socket.off('timer-update', handleTimerUpdate);
+      socket.off('word-correct', handleWordCorrect);
+      socket.off('word-skipped', handleWordSkipped);
+      socket.off('connect', handleConnect);
+      socket.off('disconnect', handleDisconnect);
     };
-  }, []);
+  }, [socket]);
 
   // If loading, show loading screen
   if (loading) {
@@ -1453,26 +1275,26 @@ function PlayerView() {
       
       {/* Player Header */}
       <div className="player-header">
-        <h2>🎮 የተጫዋቾች ስክሪን  </h2> {/*Player Screen*/}
+        <h2>🎮 የተጫዋቾች ስክሪን</h2>
         <div className="player-info">
           <div className="info-card">
-            <div className="label">የእርሶ ቡድን:</div>{/*Your Team*/}
+            <div className="label">የእርሶ ቡድን:</div>
             <div className="value" style={{ color: currentTeam?.color }}>
               {currentTeam?.name || 'No team playing'}
             </div>
           </div>
           <div className="info-card">
-            <div className="label">የቀሮት ሰአት:</div>{/*Time Left*/}
+            <div className="label">የቀሮት ሰአት:</div>
             <div className={`timer ${timer <= 10 ? 'warning' : ''}`}>
               {timer} seconds
             </div>
           </div>
           <div className="info-card">
-            <div className="label">የገመቱት ቃል:</div> {/*"Word guessed"*/}
+            <div className="label">የገመቱት ቃል:</div>
             <div className="value">{correctWords.length}</div>
           </div>
           <div className="info-card">
-            <div className="label">የቡድኖ ነጥብ:</div>{/*Team Score*/}
+            <div className="label">የቡድኖ ነጥብ:</div>
             <div className="value">{currentTeam?.score?.toFixed(2) || '0.00'} pts</div>
           </div>
         </div>
@@ -1481,14 +1303,14 @@ function PlayerView() {
       <div className="player-content">
         {/* Left: Pyramid View */}
         <div className="player-pyramid-section">
-          <h3>📦 ሳጥኖች</h3> {/*Pyramid Boxes */}
+          <h3>📦 ሳጥኖች</h3>
           <div className="player-pyramid">
             {/* Row 1: Box 1 */}
             <div className="pyramid-row">
               <div 
                 className={`player-pyramid-box ${boxes[0]?.isCurrent ? 'current' : ''} ${boxes[0]?.conqueredBy ? 'conquered' : ''}`}
                 style={{ 
-                  backgroundColor: boxes[0]?.conqueredBy ? '#668' : boxes[0]?.color,
+                  backgroundColor: boxes[0]?.conqueredBy ? '#aaa' : boxes[0]?.color,
                   opacity: boxes[0]?.conqueredBy ? 0.7 : 1
                 }}
               >
@@ -1507,7 +1329,7 @@ function PlayerView() {
                   key={index}
                   className={`player-pyramid-box ${boxes[index]?.isCurrent ? 'current' : ''} ${boxes[index]?.conqueredBy ? 'conquered' : ''}`}
                   style={{ 
-                    backgroundColor: boxes[index]?.conqueredBy ? '#668' : boxes[index]?.color,
+                    backgroundColor: boxes[index]?.conqueredBy ? '#aaa' : boxes[index]?.color,
                     opacity: boxes[index]?.conqueredBy ? 0.7 : 1
                   }}
                 >
@@ -1527,7 +1349,7 @@ function PlayerView() {
                   key={index}
                   className={`player-pyramid-box ${boxes[index]?.isCurrent ? 'current' : ''} ${boxes[index]?.conqueredBy ? 'conquered' : ''}`}
                   style={{ 
-                    backgroundColor: boxes[index]?.conqueredBy ? '#668' : boxes[index]?.color,
+                    backgroundColor: boxes[index]?.conqueredBy ? '#aaa' : boxes[index]?.color,
                     opacity: boxes[index]?.conqueredBy ? 0.7 : 1
                   }}
                 >
@@ -1545,7 +1367,7 @@ function PlayerView() {
               <div 
                 className={`player-pyramid-box ${boxes[6]?.isCurrent ? 'current' : ''} ${boxes[6]?.conqueredBy ? 'conquered' : ''}`}
                 style={{ 
-                  backgroundColor: boxes[6]?.conqueredBy ? '#668' : boxes[6]?.color,
+                  backgroundColor: boxes[6]?.conqueredBy ? '#aaa' : boxes[6]?.color,
                   opacity: boxes[6]?.conqueredBy ? 0.7 : 1
                 }}
               >
@@ -1573,9 +1395,9 @@ function PlayerView() {
           {!gameStarted ? (
             <div className="waiting-screen">
               <div className="waiting-icon">⏳</div>
-              <h3>ጨዋታው እስኪጀመር ይጠብቁ</h3> {/*Waiting for Admin to Start Round */}
+              <h3>ጨዋታው እስኪጀመር ይጠብቁ</h3>
               <p>ዙሩ ሲጀምር ቃላቶች አንድ በአንድ እዚህ ጋር ይታያሉ።</p>
-              <div className="instructions">{/*When the round starts, words will appear here one by one.     Instructions for Clue Giver   Describe each word WITHOUT saying the actual word  Your teammate must guess based on your clues     Admin will mark correct answers   Get as many as possible in 30 seconds!*/}
+              <div className="instructions">
                 <p><strong>🔖ፍንጭ ሰጪ መመሪያዎች፡-:</strong></p>
                 <p>1. ትክክለኛውን ቃል ሳይናገሩ እያንዳንዱን ቃል ይግለጹ</p>
                 <p>2. የቡድን ጓደኛዎ በእርስዎ ፍንጮች ላይ በመመስረት መገመት አለበት።</p>
@@ -1586,7 +1408,7 @@ function PlayerView() {
           ) : (
             <div className="active-game">
               <div className="word-display-header">
-                <h3>ይህንን ቃል ለቡድን ጓደኛዎ ይግለጹ:</h3>{/*Describe this word to your teammate */}
+                <h3>ይህንን ቃል ለቡድን ጓደኛዎ ይግለጹ:</h3>
                 <div className="word-progress">
                   Word {currentWordIndex + 1} of {getCurrentBox()?.words?.length}
                 </div>
@@ -1605,7 +1427,7 @@ function PlayerView() {
                       {getCurrentBox()?.words[currentWordIndex]}
                     </div>
                     <div className="word-countdown">
-                      {timer}s ይቀሮታል{/*left*/}
+                      {timer}s ይቀሮታል
                     </div>
                   </div>
                 )}
@@ -1615,13 +1437,13 @@ function PlayerView() {
                     onClick={() => setWordDisplayStyle('one-by-one')}
                     className={`style-btn ${wordDisplayStyle === 'one-by-one' ? 'active' : ''}`}
                   >
-                    አንድ በአንድ{/* One by One*/ }  
+                    አንድ በአንድ
                   </button>
                   <button
                     onClick={() => setWordDisplayStyle('flashcard')}
                     className={`style-btn ${wordDisplayStyle === 'flashcard' ? 'active' : ''}`}
                   >
-                    በትልቁ {/*Flashcard */}
+                    በትልቁ
                   </button>
                 </div>
               </div>
@@ -1663,7 +1485,7 @@ function PlayerView() {
       
       {/* Scoreboard */}
       <div className="scoreboard">
-        <h3>🏆እሁን ያለው ውጤት ድምር </h3> {/*Live Scoreboard */}
+        <h3>🏆እሁን ያለው ውጤት ድምር</h3>
         <div className="teams-scoreboard">
           {teams.map(team => (
             <div 
@@ -1674,9 +1496,9 @@ function PlayerView() {
               <div className="scoreboard-team-info">
                 <div className="team-dot" style={{ backgroundColor: team.color }} />
                 <div className="team-name">{team.name}</div>
-                {team.isPlaying && <div className="playing-indicator">🎯 እየተጫወቱ ነው</div>}{/*PLAYING    points*/}
+                {team.isPlaying && <div className="playing-indicator">🎯 እየተጫወቱ ነው</div>}
               </div>
-              <div className="team-score">{team.score?.toFixed(2) || '0.00'} ነጥብ </div>
+              <div className="team-score">{team.score?.toFixed(2) || '0.00'} ነጥብ</div>
             </div>
           ))}
         </div>
