@@ -315,34 +315,37 @@ function AdminPanel() {
     };
   }, [isAuthenticated]);
 
-  // Timer effect
+  // Timer effect - UPDATED for better synchronization
   useEffect(() => {
+    // Clear any existing interval
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current);
+      timerIntervalRef.current = null;
+    }
+
+    // Start new interval if timer is running
     if (isTimerRunning && timer > 0) {
       timerIntervalRef.current = setInterval(async () => {
-        setTimer(prevTimer => {
-          const newTimer = prevTimer - 1;
+        const newTimer = timer - 1;
+        setTimer(newTimer);
+        
+        // Update timer in Firebase
+        const gameStateDoc = doc(db, 'game', 'state');
+        await updateDoc(gameStateDoc, { timer: newTimer });
+        
+        if (newTimer <= 0) {
+          clearInterval(timerIntervalRef.current);
+          setIsTimerRunning(false);
+          setGameStarted(false);
           
-          // Update timer in Firebase
-          const gameStateDoc = doc(db, 'game', 'state');
-          updateDoc(gameStateDoc, { timer: newTimer });
-          
-          if (newTimer <= 0) {
-            clearInterval(timerIntervalRef.current);
-            setIsTimerRunning(false);
-            setGameStarted(false);
-            
-            // Update game state in Firebase
-            updateDoc(gameStateDoc, {
-              isTimerRunning: false,
-              gameStarted: false
-            });
-          }
-          
-          return newTimer;
-        });
+          // Update game state in Firebase
+          await updateDoc(gameStateDoc, {
+            isTimerRunning: false,
+            gameStarted: false,
+            timer: 0
+          });
+        }
       }, 1000);
-    } else if (timer <= 0) {
-      clearInterval(timerIntervalRef.current);
     }
     
     return () => {
@@ -402,6 +405,11 @@ function AdminPanel() {
     if (currentBox === null) {
       alert('Please select a box first!');
       return;
+    }
+
+    // Clear any existing timer
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current);
     }
 
     await updateFirebaseDoc('state', {
@@ -479,11 +487,14 @@ function AdminPanel() {
 
   // End round
   const endRound = async () => {
-    clearInterval(timerIntervalRef.current);
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current);
+      timerIntervalRef.current = null;
+    }
+    
     await updateFirebaseDoc('state', {
       isTimerRunning: false,
-      gameStarted: false,
-      timer: 0
+      gameStarted: false
     });
   };
 
@@ -650,7 +661,10 @@ function AdminPanel() {
       timer: 30
     });
     
-    clearInterval(timerIntervalRef.current);
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current);
+      timerIntervalRef.current = null;
+    }
   };
 
   // Reset box
@@ -690,7 +704,10 @@ function AdminPanel() {
       await updateFirebaseDoc('boxes', { boxes: resetBoxes });
       await updateFirebaseDoc('state', resetState);
       
-      clearInterval(timerIntervalRef.current);
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = null;
+      }
     }
   };
 
@@ -1321,40 +1338,46 @@ function PlayerView() {
   const [correctWords, setCorrectWords] = useState([]);
   const [skippedWords, setSkippedWords] = useState([]);
   const [wordDisplayStyle, setWordDisplayStyle] = useState('one-by-one');
-  const [isConnected, setIsConnected] = useState(false);
+  const [isConnected, setIsConnected] = useState(true);
   const [loading, setLoading] = useState(true);
 
-  // Listen to Firebase updates
+  // Listen to Firebase updates - COMPLETELY SYNCHRONIZED WITH ADMIN
   useEffect(() => {
     let unsubscribeTeams, unsubscribeBoxes, unsubscribeState;
 
     const setupFirebaseListeners = () => {
       try {
-        // Listen to teams
+        // Listen to teams - SAME AS ADMIN
         const teamsDoc = doc(db, 'game', 'teams');
         unsubscribeTeams = onSnapshot(teamsDoc, (doc) => {
           if (doc.exists()) {
-            setTeams(doc.data().teams || []);
+            const data = doc.data();
+            setTeams(data.teams || []);
             setIsConnected(true);
+          } else {
+            setTeams([]);
           }
         }, (error) => {
           console.error('Teams listener error:', error);
           setIsConnected(false);
         });
 
-        // Listen to boxes
+        // Listen to boxes - SAME AS ADMIN
         const boxesDoc = doc(db, 'game', 'boxes');
         unsubscribeBoxes = onSnapshot(boxesDoc, (doc) => {
           if (doc.exists()) {
-            setBoxes(doc.data().boxes || []);
+            const data = doc.data();
+            setBoxes(data.boxes || []);
             setIsConnected(true);
+          } else {
+            setBoxes([]);
           }
         }, (error) => {
           console.error('Boxes listener error:', error);
           setIsConnected(false);
         });
 
-        // Listen to game state
+        // Listen to game state - SAME AS ADMIN
         const gameStateDoc = doc(db, 'game', 'state');
         unsubscribeState = onSnapshot(gameStateDoc, (doc) => {
           if (doc.exists()) {
@@ -1367,6 +1390,18 @@ function PlayerView() {
             setSkippedWords(data.skippedWords || []);
             setIsConnected(true);
             setLoading(false);
+          } else {
+            // Initialize with default state if not exists
+            const defaultState = {
+              currentBox: null,
+              currentWordIndex: 0,
+              gameStarted: false,
+              timer: 30,
+              isTimerRunning: false,
+              correctWords: [],
+              skippedWords: []
+            };
+            setDoc(gameStateDoc, defaultState);
           }
         }, (error) => {
           console.error('State listener error:', error);
